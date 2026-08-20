@@ -9,6 +9,8 @@
 - Standard Configuration Profiles linked to asset types
 - Governed Brand Master with an additive starter catalogue of commonly used IT brands
 - Default IT asset groups and asset types with lifecycle and inspection defaults
+- Tracking modes distinguish serialized assets, accessories/components and consumables
+- Expanded peripherals, chargers, power devices, storage media, mobile/AV items and network-switch categories
 - Active, inactive and reactivation lifecycle
 - Responsive localhost forms and browser-local persistence
 
