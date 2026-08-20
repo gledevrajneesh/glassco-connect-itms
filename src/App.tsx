@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import './App.css'
+import SharedMasters from './features/masters/SharedMasters'
 
 const modules = [
   ['Shared Masters', 'Users, departments, sites and vendors', '◫'],
@@ -14,6 +15,7 @@ const navItems = ['Dashboard', 'Shared Masters', 'Asset Inventory', 'Allocation 
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [section, setSection] = useState('Dashboard')
 
   return (
     <div className="app-shell">
@@ -30,13 +32,14 @@ function App() {
         <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
           <div className="sidebar-label">IT Asset Lifecycle</div>
           <nav aria-label="Primary navigation">
-            {navItems.map((item, index) => <button type="button" className={index === 0 ? 'active' : ''} key={item} onClick={() => setMenuOpen(false)}><span>{index === 0 ? '⌂' : '›'}</span>{item}</button>)}
+            {navItems.map((item, index) => <button type="button" className={section === item ? 'active' : ''} key={item} onClick={() => { setSection(item); setMenuOpen(false) }}><span>{index === 0 ? '⌂' : '›'}</span>{item}</button>)}
           </nav>
           <div className="sidebar-footer"><strong>Controlled system</strong><span>Local development foundation</span></div>
         </aside>
         {menuOpen && <button type="button" className="backdrop" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
 
         <main>
+          {section === 'Shared Masters' ? <SharedMasters /> : <>
           <section className="page-heading">
             <div><span className="eyebrow">GCCP-ITMS-FOUNDATION-01</span><h1>IT Asset Lifecycle Dashboard</h1><p>One governed source for IT inventory, custody, maintenance and assurance.</p></div>
             <span className="phase">PHASE 1 · LOCALHOST</span>
@@ -56,6 +59,7 @@ function App() {
           </section>
 
           <section className="boundary"><strong>Foundation boundary</strong><span>100% localhost development first. Firebase Spark deployment will begin only after local acceptance and explicit approval.</span></section>
+          </>}
         </main>
       </div>
     </div>
