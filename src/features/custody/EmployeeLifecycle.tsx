@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import DataTable from '../../components/DataTable'
 import { useLocalStore } from '../../lib/localStore'
-import { deriveCustody, type AssetDisposition, type CustodyMovement } from './CustodyMovements'
+import { deriveCustody, type AssetDisposition, type CustodyMovement } from '../../lib/custodyLifecycle'
 
 type Department = { id: string; code: string; name: string; status: string }
 type User = { id: string; employeeCode: string; name: string; email: string; phone?: string; departmentId: string; status: string }

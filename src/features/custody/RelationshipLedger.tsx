@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLocalStore } from '../../lib/localStore'
 import DataTable from '../../components/DataTable'
-import { deriveCustody, type CustodyMovement } from './CustodyMovements'
+import { deriveCustody, type CustodyMovement } from '../../lib/custodyLifecycle'
 
 type Status = 'Active' | 'Inactive'
 type Department = { id: string; code: string; name: string; status: Status }
