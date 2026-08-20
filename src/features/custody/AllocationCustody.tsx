@@ -34,10 +34,11 @@ export default function AllocationCustody() {
   const activeCustody = allocations.filter((allocation) => allocation.state === 'Active custody')
   const employeeCustodyAssetIds = new Set(activeCustody.filter((allocation) => allocation.userId === form.userId).flatMap((allocation) => allocation.assetIds))
   const employeeCustodyAssets = assets.filter((asset) => employeeCustodyAssetIds.has(asset.id) && asset.stockStatus === 'Allocated')
+  const categoryCustodyAssets = employeeCustodyAssets.filter((asset) => models.find((model) => model.id === asset.modelId)?.typeId === categoryId)
 
   function nextCode() { return `ALLOC-${new Date().getFullYear()}-${String(allocations.length + 1).padStart(4, '0')}` }
   function closeForm() { setFormOpen(false); setForm(blankForm); setCategoryId('') }
-  function changeCategory(value: string) { setCategoryId(value); setForm((current) => ({ ...current, assetIds: [] })) }
+  function changeCategory(value: string) { setCategoryId(value); setForm((current) => ({ ...current, assetIds: [], replacementAssetId: '' })) }
   function toggleAsset(assetId: string) { setForm((current) => ({ ...current, assetIds: current.assetIds.includes(assetId) ? current.assetIds.filter((id) => id !== assetId) : [...current.assetIds, assetId] })) }
 
   function createAllocation(event: FormEvent) {
@@ -73,8 +74,8 @@ export default function AllocationCustody() {
         <label>Department<select required value={form.departmentId} onChange={(event) => setForm({ ...form, departmentId: event.target.value, userId: '' })}><option value="">Select department</option>{departments.filter((item) => item.status === 'Active').map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label>
         <label>Employee<select required disabled={!form.departmentId} value={form.userId} onChange={(event) => setForm({ ...form, userId: event.target.value, replacementAssetId: '' })}><option value="">{form.departmentId ? 'Select employee' : 'Select department first'}</option>{departmentUsers.map((item) => <option value={item.id} key={item.id}>{item.employeeCode} · {item.name}</option>)}</select></label>
         <label>Allocation reason<select value={form.allocationKind} onChange={(event) => setForm({ ...form, allocationKind: event.target.value as AllocationKind, replacementAssetId: '' })}><option>New allocation</option><option>Replacement</option><option>Temporary issue</option></select></label>
-        {form.allocationKind === 'Replacement' && <label>Asset being replaced<select required disabled={!form.userId} value={form.replacementAssetId} onChange={(event) => setForm({ ...form, replacementAssetId: event.target.value })}><option value="">{form.userId ? 'Select current asset' : 'Select employee first'}</option>{employeeCustodyAssets.map((asset) => <option value={asset.id} key={asset.id}>{assetLabel(asset)}</option>)}</select></label>}
         <label>Asset category<select required value={categoryId} onChange={(event) => changeCategory(event.target.value)}><option value="">Select category first</option>{assetTypes.filter((item) => item.status === 'Active' && availableCategoryIds.has(item.id)).map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label>
+        {form.allocationKind === 'Replacement' && <label>Asset being replaced<select required disabled={!form.userId || !categoryId} value={form.replacementAssetId} onChange={(event) => setForm({ ...form, replacementAssetId: event.target.value })}><option value="">{!form.userId ? 'Select employee first' : !categoryId ? 'Select category first' : 'Select current asset'}</option>{categoryCustodyAssets.map((asset) => <option value={asset.id} key={asset.id}>{assetLabel(asset)}</option>)}</select></label>}
         <label>Allocation date<input required type="date" value={form.allocationDate} onChange={(event) => setForm({ ...form, allocationDate: event.target.value })} /></label>
         <label>Expected return date<input type="date" min={form.allocationDate} value={form.expectedReturnDate} onChange={(event) => setForm({ ...form, expectedReturnDate: event.target.value })} /></label>
         <label className="wide-field">Business purpose<textarea required value={form.purpose} onChange={(event) => setForm({ ...form, purpose: event.target.value })} placeholder="Role requirement, onboarding, replacement or temporary allocation" /></label>
