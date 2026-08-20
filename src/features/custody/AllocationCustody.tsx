@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useLocalStore } from '../../lib/localStore'
+import RelationshipLedger from './RelationshipLedger'
 
 type Status = 'Active' | 'Inactive'
 type Department = { id: string; code: string; name: string; status: Status }
@@ -15,6 +16,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 const blankForm = { departmentId: '', userId: '', assetIds: [] as string[], allocationKind: 'New allocation' as AllocationKind, replacementAssetId: '', allocationDate: today(), expectedReturnDate: '', purpose: '' }
 
 export default function AllocationCustody() {
+  const [workspace, setWorkspace] = useState<'Allocation workflow' | 'Relationship ledger'>('Allocation workflow')
   const [departments] = useLocalStore<Department[]>('itms.departments.v1', [])
   const [users] = useLocalStore<User[]>('itms.users.v1', [])
   const [assets, setAssets] = useLocalStore<Asset[]>('itms.assets.v1', [])
@@ -68,7 +70,8 @@ export default function AllocationCustody() {
 
   return <>
     <section className="page-heading"><div><span className="eyebrow">GCCP-ITMS-BUILD-04</span><h1>Allocation & Custody</h1><p>Control multi-asset issue, dual approval and accountable employee custody.</p></div><span className="phase">DUAL APPROVAL</span></section>
-    <section className="master-panel custody-panel">
+    <nav className="workspace-tabs" aria-label="Allocation and custody workspace">{(['Allocation workflow', 'Relationship ledger'] as const).map((item) => <button type="button" className={workspace === item ? 'selected' : ''} onClick={() => setWorkspace(item)} key={item}>{item}</button>)}</nav>
+    {workspace === 'Relationship ledger' ? <RelationshipLedger /> : <section className="master-panel custody-panel">
       <div className="operation-heading"><div><span className="eyebrow">DEPARTMENT-FIRST ALLOCATION</span><h2>Asset allocation requests</h2><p>Only active employees and uncommitted in-stock assets are available.</p></div><button type="button" className="primary-action" onClick={() => setFormOpen(!formOpen)}>＋ New allocation</button></div>
       {formOpen && <form className="master-form allocation-form" onSubmit={createAllocation}>
         <label>Department<select required value={form.departmentId} onChange={(event) => setForm({ ...form, departmentId: event.target.value, userId: '' })}><option value="">Select department</option>{departments.filter((item) => item.status === 'Active').map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label>
@@ -91,6 +94,6 @@ export default function AllocationCustody() {
         <div className="approval-trail"><span className={allocation.assetManagerApprovedAt ? 'complete' : ''}>Asset Manager {allocation.assetManagerApprovedAt ? '✓' : 'pending'}</span><span className={allocation.itHeadApprovedAt ? 'complete' : ''}>IT Head {allocation.itHeadApprovedAt ? '✓' : 'pending'}</span>{allocation.state === 'Pending Asset Manager' && <button type="button" onClick={() => approveAssetManager(allocation.id)}>Approve as Asset Manager</button>}{allocation.state === 'Pending IT Head' && <button type="button" onClick={() => approveITHead(allocation.id)}>Approve as IT Head</button>}</div>
         <div className="allocation-history"><strong>Allocation history</strong><span>Requested · {formatStamp(allocation.requestedAt)} · {allocation.requestedBy}</span><span>Asset Manager approval · {formatStamp(allocation.assetManagerApprovedAt)}</span><span>IT Head approval / custody activated · {formatStamp(allocation.itHeadApprovedAt)}</span>{allocation.replacementAssetId && allocation.itHeadApprovedAt && <span>Replaced asset moved to inspection pending · {formatStamp(allocation.itHeadApprovedAt)}</span>}</div>
       </article>)}{allocations.length === 0 && <div className="empty-state"><span>⇄</span><strong>No allocation records</strong><p>Create the first request to begin controlled custody.</p></div>}</div>
-    </section>
+    </section>}
   </>
 }
