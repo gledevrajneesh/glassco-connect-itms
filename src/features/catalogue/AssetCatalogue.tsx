@@ -35,6 +35,18 @@ const defaultBrands: Brand[] = [
   ['DELL', 'Dell'], ['HP', 'HP'], ['LENOVO', 'Lenovo'], ['APPLE', 'Apple'], ['CISCO', 'Cisco'], ['HPE', 'Hewlett Packard Enterprise'], ['FORTINET', 'Fortinet'], ['SOPHOS', 'Sophos'], ['UBIQUITI', 'Ubiquiti'], ['ARUBA', 'Aruba'], ['APC', 'APC'], ['EATON', 'Eaton'], ['VERTIV', 'Vertiv'], ['SYNOLOGY', 'Synology'], ['QNAP', 'QNAP'], ['NETGEAR', 'Netgear'], ['TPLINK', 'TP-Link'], ['CANON', 'Canon'], ['EPSON', 'Epson'], ['BROTHER', 'Brother'], ['YEALINK', 'Yealink'], ['MIKROTIK', 'MikroTik'],
 ].map(([code, name]) => ({ id: `brand-default-${code}`, code, name, status: 'Active' }))
 
+const demoVendors: Vendor[] = [
+  ['VND-DELL', 'Dell India Demo', '06AAAAA0000A1Z5'], ['VND-HP', 'HP India Demo', '06BBBBB0000B1Z5'], ['VND-LEN', 'Lenovo India Demo', '06CCCCC0000C1Z5'], ['VND-CISCO', 'Cisco Partner Demo', '06DDDDD0000D1Z5'], ['VND-LOCAL', 'Glassco Local IT Supplier Demo', '06EEEEE0000E1Z5'],
+].map(([code, name, gst], index) => ({ id: `demo-vendor-${code}`, code, name, gst, contact: `90000001${String(index + 1).padStart(2, '0')}`, email: `${code.toLowerCase()}@example.test`, address: 'Demo address, Ambala, Haryana', status: 'Active' }))
+
+const demoModels: AssetModel[] = [
+  ['LAT-5440', 'Latitude 5440', 'LAPTOP', 'Dell', '36'], ['ELITE-840', 'EliteBook 840 G10', 'LAPTOP', 'HP', '36'], ['THINK-E14', 'ThinkPad E14 Gen 5', 'LAPTOP', 'Lenovo', '36'], ['P2422H', 'P2422H Monitor', 'MONITOR', 'Dell', '36'], ['CBS350', 'CBS350 Managed Switch', 'SWITCH', 'Cisco', '12'],
+].map(([code, name, type, brand, warrantyMonths]) => ({ id: `demo-model-${code}`, code, name, typeId: `type-default-${type}`, brand, warrantyMonths, status: 'Active' }))
+
+const demoProfiles: ConfigProfile[] = [
+  ['LAP-STD', 'Standard Business Laptop', 'LAPTOP', 'Core i5, 16 GB RAM, 512 GB SSD'], ['LAP-PRO', 'Power User Laptop', 'LAPTOP', 'Core i7, 32 GB RAM, 1 TB SSD'], ['MON-24', '24-inch Office Monitor', 'MONITOR', '24-inch IPS, Full HD, HDMI/DisplayPort'], ['SW-24P', '24-port Managed Access Switch', 'SWITCH', '24 x Gigabit, VLAN, STP, managed'], ['UPS-1K', '1 kVA UPS Standard', 'UPS', '1 kVA line-interactive with monitoring'],
+].map(([code, name, type, specification]) => ({ id: `demo-config-${code}`, code, name, typeId: `type-default-${type}`, specification, status: 'Active' }))
+
 function createId(prefix: string) { return `${prefix}-${crypto.randomUUID()}` }
 
 export default function AssetCatalogue({ embedded = false }: { embedded?: boolean }) {
@@ -58,10 +70,13 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
   const activeCount = records.filter((record) => record.status === 'Active').length
 
   useEffect(() => {
+    setVendors((current) => [...current, ...demoVendors.filter((item) => !current.some((record) => record.code === item.code))])
     setGroups((current) => [...current, ...defaultGroups.filter((item) => !current.some((record) => record.code === item.code))])
     setTypes((current) => [...current, ...[...defaultTypes, ...additionalDefaultTypes].filter((item) => !current.some((record) => record.code === item.code))])
     setBrands((current) => [...current, ...defaultBrands.filter((item) => !current.some((record) => record.code === item.code))])
-  }, [setBrands, setGroups, setTypes])
+    setModels((current) => [...current, ...demoModels.filter((item) => !current.some((record) => record.code === item.code))])
+    setProfiles((current) => [...current, ...demoProfiles.filter((item) => !current.some((record) => record.code === item.code))])
+  }, [setBrands, setGroups, setModels, setProfiles, setTypes, setVendors])
 
   function resetForm() {
     setFormOpen(false); setVendorForm(blankVendor); setGroupForm(blankGroup); setTypeForm(blankType); setBrandForm(blankBrand); setModelForm(blankModel); setProfileForm(blankProfile)

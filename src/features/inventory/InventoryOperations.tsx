@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useLocalStore } from '../../lib/localStore'
 
 type Status = 'Active' | 'Inactive'
@@ -15,6 +15,17 @@ const today = () => new Date().toISOString().slice(0, 10)
 const newReceipt = { vendorId: '', invoiceNumber: '', purchaseOrder: '', receivedDate: today(), receivedBy: 'dev@glasscolabs.com', typeId: '', modelId: '', quantity: '1', outcome: 'Accepted' as ReceiptOutcome, inspectionNote: '' }
 const newAsset = { receiptId: '', serialNumber: '', locationId: '', configId: '', purchaseDate: today(), cost: '', condition: 'New', stockStatus: 'In stock' }
 
+const demoReceipts: Receipt[] = [
+  { id: 'demo-receipt-laptop', grn: 'GRN-DEMO-0001', vendorId: 'demo-vendor-VND-DELL', purchaseOrder: 'DEMO-PO-1001', invoiceNumber: 'DEMO-INV-1001', receivedDate: '2026-08-01', receivedBy: 'Demo Store Receiver', typeId: 'type-default-LAPTOP', modelId: 'demo-model-LAT-5440', quantity: 2, outcome: 'Accepted', inspectionNote: 'Demo stock accepted after visual inspection.', createdAt: '2026-08-01T09:00:00.000Z' },
+  { id: 'demo-receipt-hp', grn: 'GRN-DEMO-0002', vendorId: 'demo-vendor-VND-HP', purchaseOrder: 'DEMO-PO-1002', invoiceNumber: 'DEMO-INV-1002', receivedDate: '2026-08-02', receivedBy: 'Demo Store Receiver', typeId: 'type-default-LAPTOP', modelId: 'demo-model-ELITE-840', quantity: 1, outcome: 'Accepted', inspectionNote: 'Demo stock accepted after visual inspection.', createdAt: '2026-08-02T09:00:00.000Z' },
+  { id: 'demo-receipt-monitor', grn: 'GRN-DEMO-0003', vendorId: 'demo-vendor-VND-DELL', purchaseOrder: 'DEMO-PO-1003', invoiceNumber: 'DEMO-INV-1003', receivedDate: '2026-08-03', receivedBy: 'Demo Store Receiver', typeId: 'type-default-MONITOR', modelId: 'demo-model-P2422H', quantity: 1, outcome: 'Accepted', inspectionNote: 'Demo display accepted after visual inspection.', createdAt: '2026-08-03T09:00:00.000Z' },
+  { id: 'demo-receipt-switch', grn: 'GRN-DEMO-0004', vendorId: 'demo-vendor-VND-CISCO', purchaseOrder: 'DEMO-PO-1004', invoiceNumber: 'DEMO-INV-1004', receivedDate: '2026-08-04', receivedBy: 'Demo Store Receiver', typeId: 'type-default-SWITCH', modelId: 'demo-model-CBS350', quantity: 1, outcome: 'Accepted', inspectionNote: 'Demo network equipment accepted after inspection.', createdAt: '2026-08-04T09:00:00.000Z' },
+]
+
+const demoAssets: Asset[] = [
+  ['GL-IT-DEMO-001', 'demo-receipt-laptop', 'LAPTOP', 'LAT-5440', 'DEMO-LAT-001', 'LAP-STD', 72500], ['GL-IT-DEMO-002', 'demo-receipt-laptop', 'LAPTOP', 'LAT-5440', 'DEMO-LAT-002', 'LAP-STD', 72500], ['GL-IT-DEMO-003', 'demo-receipt-hp', 'LAPTOP', 'ELITE-840', 'DEMO-HP-001', 'LAP-PRO', 88500], ['GL-IT-DEMO-004', 'demo-receipt-monitor', 'MONITOR', 'P2422H', 'DEMO-MON-001', 'MON-24', 14500], ['GL-IT-DEMO-005', 'demo-receipt-switch', 'SWITCH', 'CBS350', 'DEMO-SW-001', 'SW-24P', 42000],
+].map(([assetId, receiptId, type, model, serialNumber, config, cost]) => ({ id: `demo-asset-${assetId}`, assetId: String(assetId), receiptId: String(receiptId), typeId: `type-default-${type}`, modelId: `demo-model-${model}`, serialNumber: String(serialNumber), locationId: 'demo-location-AMB-HO', configId: `demo-config-${config}`, purchaseDate: '2026-08-01', cost: Number(cost), condition: 'New', stockStatus: 'In stock', createdAt: '2026-08-01T10:00:00.000Z' }))
+
 export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 'Asset register' }) {
   const [vendors] = useLocalStore<Vendor[]>('itms.vendors.v1', [])
   const [types] = useLocalStore<AssetType[]>('itms.asset-types.v1', [])
@@ -25,6 +36,11 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
   const [assets, setAssets] = useLocalStore<Asset[]>('itms.assets.v1', [])
   const [receiptForm, setReceiptForm] = useState(newReceipt)
   const [assetForm, setAssetForm] = useState(newAsset)
+
+  useEffect(() => {
+    setReceipts((current) => [...current, ...demoReceipts.filter((seed) => !current.some((item) => item.grn === seed.grn))])
+    setAssets((current) => [...current, ...demoAssets.filter((seed) => !current.some((item) => item.assetId === seed.assetId))])
+  }, [setAssets, setReceipts])
   const [formOpen, setFormOpen] = useState(false)
   const [message, setMessage] = useState('')
 

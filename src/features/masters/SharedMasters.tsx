@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useLocalStore } from '../../lib/localStore'
 
 type Status = 'Active' | 'Inactive'
@@ -9,6 +9,17 @@ type UserRecord = BasicRecord & { employeeCode: string; email: string; phone: st
 const tabs: MasterType[] = ['Departments', 'Locations', 'User groups', 'Users']
 const emptyBasic = { code: '', name: '', status: 'Active' as Status }
 const emptyUser = { employeeCode: '', name: '', email: '', phone: '', departmentId: '', locationId: '', groupId: '', status: 'Active' as Status }
+
+const demoDepartments: BasicRecord[] = [['IT', 'Information Technology'], ['FIN', 'Finance'], ['HR', 'Human Resources'], ['SALES', 'Sales'], ['SERVICE', 'Service']].map(([code, name]) => ({ id: `demo-dept-${code}`, code, name, status: 'Active' }))
+const demoLocations: BasicRecord[] = [['AMB-HO', 'Ambala Head Office'], ['AMB-WH', 'Ambala Warehouse'], ['DEL-OFC', 'Delhi Office'], ['MUM-OFC', 'Mumbai Office'], ['REMOTE', 'Remote / Field']].map(([code, name]) => ({ id: `demo-location-${code}`, code, name, status: 'Active' }))
+const demoGroups: BasicRecord[] = [['EMP', 'Employees'], ['MGR', 'Managers'], ['IT-AM', 'IT Asset Managers'], ['IT-HOD', 'IT Head'], ['AUD', 'Auditors']].map(([code, name]) => ({ id: `demo-group-${code}`, code, name, status: 'Active' }))
+const demoUsers: UserRecord[] = [
+  ['EMP-1001', 'Aarav Sharma', 'aarav.sharma@example.test', '9000000001', 'IT', 'AMB-HO', 'IT-AM'],
+  ['EMP-1002', 'Meera Gupta', 'meera.gupta@example.test', '9000000002', 'FIN', 'AMB-HO', 'EMP'],
+  ['EMP-1003', 'Rohan Verma', 'rohan.verma@example.test', '9000000003', 'HR', 'AMB-HO', 'MGR'],
+  ['EMP-1004', 'Nisha Kapoor', 'nisha.kapoor@example.test', '9000000004', 'SALES', 'DEL-OFC', 'EMP'],
+  ['EMP-1005', 'Vikram Singh', 'vikram.singh@example.test', '9000000005', 'SERVICE', 'REMOTE', 'EMP'],
+].map(([employeeCode, name, email, phone, department, location, group]) => ({ id: `demo-user-${employeeCode}`, code: employeeCode, employeeCode, name, email, phone, departmentId: `demo-dept-${department}`, locationId: `demo-location-${location}`, groupId: `demo-group-${group}`, status: 'Active' }))
 
 function makeId(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`
@@ -28,6 +39,13 @@ export default function SharedMasters() {
 
   const currentBasic = activeTab === 'Departments' ? departments : activeTab === 'Locations' ? locations : groups
   const filteredUsers = useMemo(() => departmentFilter === 'all' ? users : users.filter((user) => user.departmentId === departmentFilter), [departmentFilter, users])
+
+  useEffect(() => {
+    setDepartments((current) => [...current, ...demoDepartments.filter((seed) => !current.some((item) => item.code === seed.code))])
+    setLocations((current) => [...current, ...demoLocations.filter((seed) => !current.some((item) => item.code === seed.code))])
+    setGroups((current) => [...current, ...demoGroups.filter((seed) => !current.some((item) => item.code === seed.code))])
+    setUsers((current) => [...current, ...demoUsers.filter((seed) => !current.some((item) => item.employeeCode === seed.employeeCode))])
+  }, [setDepartments, setGroups, setLocations, setUsers])
 
   function closeForm() {
     setFormOpen(false)
