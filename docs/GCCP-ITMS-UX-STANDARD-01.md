@@ -9,5 +9,6 @@ Status: **APPROVED AND LOCKED**
 - Sticky table headers and optional sticky identity column
 - Horizontal scrolling instead of unreadable column compression
 - Consistent status and row-action treatment
-- Initial adoption: Shared Masters and Asset Catalogue
+- Universal shell uses independent fixed header, fixed/sidebar scrolling and main-workspace scrolling
+- Current adoption: Shared Masters, Asset Catalogue, Goods Receipt, Asset Register, Allocation Register and Relationship Ledger
 - Future registers must reuse the same table standard
