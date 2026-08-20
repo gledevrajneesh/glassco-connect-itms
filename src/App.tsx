@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import './App.css'
 import SharedMasters from './features/masters/SharedMasters'
+import AppLauncher from './features/platform/AppLauncher'
 
 const modules = [
   ['Shared Masters', 'Users, departments, sites and vendors', '◫'],
@@ -16,19 +17,21 @@ const navItems = ['Dashboard', 'Shared Masters', 'Asset Inventory', 'Allocation 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [section, setSection] = useState('Dashboard')
+  const [activeApp, setActiveApp] = useState<string | null>(null)
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <button className="menu-button" type="button" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>☰</button>
+        {activeApp && <button className="menu-button" type="button" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>☰</button>}
         <div className="brand-mark" aria-hidden="true"><i /><i /><i /><i /></div>
-        <div className="brand"><strong>GLASSCO</strong><span>CONNECT · ITMS</span></div>
+        <div className="brand"><strong>GLASSCO</strong><span>{activeApp ? 'CONNECT · ITMS' : 'CONNECT'}</span></div>
         <div className="topbar-spacer" />
+        {activeApp && <button type="button" className="all-apps" onClick={() => { setActiveApp(null); setMenuOpen(false) }}>All applications</button>}
         <span className="environment">LOCALHOST</span>
         <span className="user">dev@glasscolabs.com</span>
       </header>
 
-      <div className="body-layout">
+      {!activeApp ? <AppLauncher onOpen={setActiveApp} /> : <div className="body-layout">
         <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
           <div className="sidebar-label">IT Asset Lifecycle</div>
           <nav aria-label="Primary navigation">
@@ -61,7 +64,7 @@ function App() {
           <section className="boundary"><strong>Foundation boundary</strong><span>100% localhost development first. Firebase Spark deployment will begin only after local acceptance and explicit approval.</span></section>
           </>}
         </main>
-      </div>
+      </div>}
     </div>
   )
 }
