@@ -1,6 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react'
 import { useLocalStore } from '../../lib/localStore'
 import DataTable from '../../components/DataTable'
+import { changedFields, useMasterAudit } from '../../lib/masterAudit'
 
 type Status = 'Active' | 'Inactive'
 type TrackingMode = 'Serialized asset' | 'Accessory / component' | 'Consumable'
@@ -66,6 +67,9 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
   const [brandForm, setBrandForm] = useState(blankBrand)
   const [modelForm, setModelForm] = useState(blankModel)
   const [profileForm, setProfileForm] = useState(blankProfile)
+  const [editingId, setEditingId] = useState('')
+  const [showHistory, setShowHistory] = useState(false)
+  const audit = useMasterAudit()
 
   const records = tab === 'Vendors' ? vendors : tab === 'Asset groups' ? groups : tab === 'Asset types' ? types : tab === 'Brands' ? brands : tab === 'Models' ? models : profiles
   const activeCount = records.filter((record) => record.status === 'Active').length
@@ -80,20 +84,25 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
   }, [setBrands, setGroups, setModels, setProfiles, setTypes, setVendors])
 
   function resetForm() {
-    setFormOpen(false); setVendorForm(blankVendor); setGroupForm(blankGroup); setTypeForm(blankType); setBrandForm(blankBrand); setModelForm(blankModel); setProfileForm(blankProfile)
+    setFormOpen(false); setEditingId(''); setVendorForm(blankVendor); setGroupForm(blankGroup); setTypeForm(blankType); setBrandForm(blankBrand); setModelForm(blankModel); setProfileForm(blankProfile)
   }
 
   function normalize(value: string) { return value.trim().toUpperCase() }
 
   function saveRecord(event: FormEvent) {
     event.preventDefault()
-    if (tab === 'Vendors') setVendors((current) => [...current, { id: createId('vendor'), ...vendorForm, code: normalize(vendorForm.code), name: vendorForm.name.trim(), email: vendorForm.email.trim().toLowerCase() }])
-    if (tab === 'Asset groups') setGroups((current) => [...current, { id: createId('group'), ...groupForm, code: normalize(groupForm.code), name: groupForm.name.trim() }])
-    if (tab === 'Asset types') setTypes((current) => [...current, { id: createId('type'), ...typeForm, code: normalize(typeForm.code), name: typeForm.name.trim() }])
-    if (tab === 'Brands') setBrands((current) => [...current, { id: createId('brand'), ...brandForm, code: normalize(brandForm.code), name: brandForm.name.trim() }])
-    if (tab === 'Models') setModels((current) => [...current, { id: createId('model'), ...modelForm, code: normalize(modelForm.code), name: modelForm.name.trim(), brand: modelForm.brand.trim() }])
-    if (tab === 'Configuration profiles') setProfiles((current) => [...current, { id: createId('config'), ...profileForm, code: normalize(profileForm.code), name: profileForm.name.trim() }])
-    setMessage(`${tab.slice(0, -1)} saved to the controlled catalogue.`)
+    const source = records.find((item) => item.id === editingId)
+    const persist = <T extends { id: string; code: string; status: Status }>(setter: Dispatch<SetStateAction<T[]>>, record: T) => {
+      setter((current) => editingId ? current.map((item) => item.id === editingId ? record : item) : [...current, record])
+      audit.record({ module: tab, recordId: record.id, recordCode: record.code, action: editingId ? 'Updated' : 'Created', changedFields: editingId && source ? changedFields(source, record) : 'Initial record' })
+    }
+    if (tab === 'Vendors') persist(setVendors, { id: editingId || createId('vendor'), ...vendorForm, code: normalize(vendorForm.code), name: vendorForm.name.trim(), email: vendorForm.email.trim().toLowerCase() })
+    if (tab === 'Asset groups') persist(setGroups, { id: editingId || createId('group'), ...groupForm, code: normalize(groupForm.code), name: groupForm.name.trim() })
+    if (tab === 'Asset types') persist<AssetType>(setTypes, { id: editingId || createId('type'), ...typeForm, code: normalize(typeForm.code), name: typeForm.name.trim() })
+    if (tab === 'Brands') persist(setBrands, { id: editingId || createId('brand'), ...brandForm, code: normalize(brandForm.code), name: brandForm.name.trim() })
+    if (tab === 'Models') persist(setModels, { id: editingId || createId('model'), ...modelForm, code: normalize(modelForm.code), name: modelForm.name.trim(), brand: modelForm.brand.trim() })
+    if (tab === 'Configuration profiles') persist(setProfiles, { id: editingId || createId('config'), ...profileForm, code: normalize(profileForm.code), name: profileForm.name.trim() })
+    setMessage(`${tab.slice(0, -1)} ${editingId ? 'updated' : 'saved'} in the controlled catalogue.`)
     resetForm()
   }
 
@@ -105,6 +114,18 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
     if (tab === 'Brands') setBrands(flip)
     if (tab === 'Models') setModels(flip)
     if (tab === 'Configuration profiles') setProfiles(flip)
+    const before = records.find((item) => item.id === id)
+    if (before) audit.record({ module: tab, recordId: id, recordCode: before.code, action: 'Status changed', changedFields: `status: ${before.status} → ${before.status === 'Active' ? 'Inactive' : 'Active'}` })
+  }
+
+  function editRecord(record: Vendor | AssetGroup | AssetType | Brand | AssetModel | ConfigProfile) {
+    setEditingId(record.id); setFormOpen(true); setShowHistory(false)
+    if ('gst' in record) setVendorForm({ code: record.code, name: record.name, gst: record.gst, contact: record.contact, email: record.email, address: record.address, status: record.status })
+    else if ('lifecycleYears' in record) setGroupForm({ code: record.code, name: record.name, lifecycleYears: record.lifecycleYears, status: record.status })
+    else if ('inspectionFrequency' in record) setTypeForm({ code: record.code, name: record.name, groupId: record.groupId, inspectionFrequency: record.inspectionFrequency, trackingMode: record.trackingMode ?? 'Serialized asset', status: record.status })
+    else if ('brand' in record) setModelForm({ code: record.code, name: record.name, typeId: record.typeId, brand: record.brand, warrantyMonths: record.warrantyMonths, status: record.status })
+    else if ('specification' in record) setProfileForm({ code: record.code, name: record.name, typeId: record.typeId, specification: record.specification, status: record.status })
+    else setBrandForm({ code: record.code, name: record.name, status: record.status })
   }
 
   function recordContext(record: Vendor | AssetGroup | AssetType | Brand | AssetModel | ConfigProfile) {
@@ -119,7 +140,7 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
   return <>
     {!embedded && <section className="page-heading"><div><span className="eyebrow">GCCP-ITMS-BUILD-02</span><h1>Vendor & Asset Catalogue</h1><p>Standardize suppliers, asset classifications, models and approved configurations.</p></div><span className="phase">CONTROLLED MASTERS</span></section>}
     <section className="master-panel">
-      <div className="master-toolbar"><div className="master-tabs" role="tablist" aria-label="Catalogue master type">{tabs.map((item) => <button type="button" role="tab" aria-selected={tab === item} className={tab === item ? 'selected' : ''} key={item} onClick={() => { setTab(item); setMessage(''); resetForm() }}>{item}</button>)}</div><button type="button" className="primary-action" onClick={() => setFormOpen(!formOpen)}>＋ Add record</button></div>
+      <div className="master-toolbar"><div className="master-tabs" role="tablist" aria-label="Catalogue master type">{tabs.map((item) => <button type="button" role="tab" aria-selected={tab === item} className={tab === item ? 'selected' : ''} key={item} onClick={() => { setTab(item); setMessage(''); setShowHistory(false); resetForm() }}>{item}</button>)}</div><div className="toolbar-actions"><button type="button" className="secondary-action" onClick={() => { setShowHistory(!showHistory); resetForm() }}>Edit history</button><button type="button" className="primary-action" onClick={() => { setShowHistory(false); setFormOpen(!formOpen) }}>＋ Add record</button></div></div>
       {formOpen && <form className="master-form catalogue-form" onSubmit={saveRecord}>
         {tab === 'Vendors' && <><label>Vendor code<input required value={vendorForm.code} onChange={(event) => setVendorForm({ ...vendorForm, code: event.target.value })} /></label><label>Vendor name<input required value={vendorForm.name} onChange={(event) => setVendorForm({ ...vendorForm, name: event.target.value })} /></label><label>GST number<input value={vendorForm.gst} onChange={(event) => setVendorForm({ ...vendorForm, gst: event.target.value })} /></label><label>Contact number<input required value={vendorForm.contact} onChange={(event) => setVendorForm({ ...vendorForm, contact: event.target.value })} /></label><label>Email<input required type="email" value={vendorForm.email} onChange={(event) => setVendorForm({ ...vendorForm, email: event.target.value })} /></label><label className="wide-field">Address<textarea required value={vendorForm.address} onChange={(event) => setVendorForm({ ...vendorForm, address: event.target.value })} /></label></>}
         {tab === 'Asset groups' && <><label>Group code<input required value={groupForm.code} onChange={(event) => setGroupForm({ ...groupForm, code: event.target.value })} /></label><label>Group name<input required value={groupForm.name} onChange={(event) => setGroupForm({ ...groupForm, name: event.target.value })} /></label><label>Planned lifecycle (years)<input required type="number" min="1" max="25" value={groupForm.lifecycleYears} onChange={(event) => setGroupForm({ ...groupForm, lifecycleYears: event.target.value })} /></label></>}
@@ -137,8 +158,9 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
         { key: 'name', label: 'Name', width: '260px', render: (record) => record.name },
         { key: 'details', label: 'Controlled details', width: '420px', render: (record) => recordContext(record) },
         { key: 'status', label: 'Status', width: '110px', render: (record) => <span className={`status ${record.status.toLowerCase()}`}>{record.status}</span> },
-        { key: 'actions', label: 'Actions', width: '130px', render: (record) => <button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button> },
+        { key: 'actions', label: 'Actions', width: '210px', render: (record) => <div className="table-actions"><button className="table-action" type="button" onClick={() => editRecord(record)}>Edit</button><button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button></div> },
       ]} empty={<div className="empty-state"><span>▣</span><strong>No {tab.toLowerCase()} recorded</strong><p>Add the first controlled record to continue.</p></div>} />
+      {showHistory && <DataTable rows={[...audit.events].filter((event) => event.module === tab).reverse()} rowKey={(event) => event.id} columns={[{ key: 'time', label: 'Timestamp', sticky: true, width: '190px', render: (event) => new Date(event.timestamp).toLocaleString('en-IN') }, { key: 'record', label: 'Record', width: '160px', render: (event) => event.recordCode }, { key: 'action', label: 'Action', width: '130px', render: (event) => event.action }, { key: 'fields', label: 'Changed fields', width: '360px', render: (event) => event.changedFields }, { key: 'actor', label: 'Changed by', width: '220px', render: (event) => event.actor }]} empty={<div className="empty-state"><span>◷</span><strong>No edit history</strong><p>Future changes to this master will be recorded here.</p></div>} />}
     </section>
   </>
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useLocalStore } from '../../lib/localStore'
 import DataTable from '../../components/DataTable'
+import { changedFields, useMasterAudit } from '../../lib/masterAudit'
 
 type Status = 'Active' | 'Inactive'
 type MasterType = 'Departments' | 'Locations' | 'User groups' | 'Users'
@@ -37,6 +38,9 @@ export default function SharedMasters() {
   const [basicForm, setBasicForm] = useState(emptyBasic)
   const [userForm, setUserForm] = useState(emptyUser)
   const [message, setMessage] = useState('')
+  const [editingId, setEditingId] = useState('')
+  const [showHistory, setShowHistory] = useState(false)
+  const audit = useMasterAudit()
 
   const currentBasic = activeTab === 'Departments' ? departments : activeTab === 'Locations' ? locations : groups
   const filteredUsers = useMemo(() => departmentFilter === 'all' ? users : users.filter((user) => user.departmentId === departmentFilter), [departmentFilter, users])
@@ -50,6 +54,7 @@ export default function SharedMasters() {
 
   function closeForm() {
     setFormOpen(false)
+    setEditingId('')
     setBasicForm(emptyBasic)
     setUserForm(emptyUser)
   }
@@ -58,27 +63,48 @@ export default function SharedMasters() {
     event.preventDefault()
     const record: BasicRecord = { id: makeId(activeTab.toLowerCase().replace(' ', '-')), ...basicForm, code: basicForm.code.trim().toUpperCase(), name: basicForm.name.trim() }
     const setter = activeTab === 'Departments' ? setDepartments : activeTab === 'Locations' ? setLocations : setGroups
-    setter((records) => [...records, record])
-    setMessage(`${activeTab.slice(0, -1)} ${record.code} created.`)
+    if (editingId) {
+      const before = currentBasic.find((item) => item.id === editingId)
+      const updated = { ...record, id: editingId }
+      setter((records) => records.map((item) => item.id === editingId ? updated : item))
+      if (before) audit.record({ module: activeTab, recordId: editingId, recordCode: updated.code, action: 'Updated', changedFields: changedFields(before, updated) })
+      setMessage(`${activeTab.slice(0, -1)} ${updated.code} updated.`)
+    } else {
+      setter((records) => [...records, record]); audit.record({ module: activeTab, recordId: record.id, recordCode: record.code, action: 'Created', changedFields: 'Initial record' }); setMessage(`${activeTab.slice(0, -1)} ${record.code} created.`)
+    }
     closeForm()
   }
 
   function saveUser(event: FormEvent) {
     event.preventDefault()
     const record: UserRecord = { id: makeId('user'), code: userForm.employeeCode.trim().toUpperCase(), ...userForm, employeeCode: userForm.employeeCode.trim().toUpperCase(), name: userForm.name.trim(), email: userForm.email.trim().toLowerCase() }
-    setUsers((records) => [...records, record])
-    setMessage(`User ${record.employeeCode} created.`)
+    if (editingId) {
+      const before = users.find((item) => item.id === editingId)
+      const updated = { ...record, id: editingId }
+      setUsers((records) => records.map((item) => item.id === editingId ? updated : item))
+      if (before) audit.record({ module: 'Users', recordId: editingId, recordCode: updated.employeeCode, action: 'Updated', changedFields: changedFields(before, updated) })
+      setMessage(`User ${updated.employeeCode} updated.`)
+    } else {
+      setUsers((records) => [...records, record]); audit.record({ module: 'Users', recordId: record.id, recordCode: record.employeeCode, action: 'Created', changedFields: 'Initial record' }); setMessage(`User ${record.employeeCode} created.`)
+    }
     closeForm()
   }
 
   function toggleStatus(id: string) {
     if (activeTab === 'Users') {
+      const before = users.find((item) => item.id === id)
       setUsers((records) => records.map((record) => record.id === id ? { ...record, status: record.status === 'Active' ? 'Inactive' : 'Active' } : record))
+      if (before) audit.record({ module: 'Users', recordId: id, recordCode: before.code, action: 'Status changed', changedFields: `status: ${before.status} → ${before.status === 'Active' ? 'Inactive' : 'Active'}` })
       return
     }
     const setter = activeTab === 'Departments' ? setDepartments : activeTab === 'Locations' ? setLocations : setGroups
     setter((records) => records.map((record) => record.id === id ? { ...record, status: record.status === 'Active' ? 'Inactive' : 'Active' } : record))
+    const before = currentBasic.find((item) => item.id === id)
+    if (before) audit.record({ module: activeTab, recordId: id, recordCode: before.code, action: 'Status changed', changedFields: `status: ${before.status} → ${before.status === 'Active' ? 'Inactive' : 'Active'}` })
   }
+
+  function editBasic(record: BasicRecord) { setEditingId(record.id); setBasicForm({ code: record.code, name: record.name, status: record.status }); setFormOpen(true); setShowHistory(false) }
+  function editUser(record: UserRecord) { setEditingId(record.id); setUserForm({ employeeCode: record.employeeCode, name: record.name, email: record.email, phone: record.phone, departmentId: record.departmentId, locationId: record.locationId, groupId: record.groupId, status: record.status }); setFormOpen(true); setShowHistory(false) }
 
   const total = activeTab === 'Users' ? filteredUsers.length : currentBasic.length
   const active = activeTab === 'Users' ? filteredUsers.filter((record) => record.status === 'Active').length : currentBasic.filter((record) => record.status === 'Active').length
@@ -95,7 +121,7 @@ export default function SharedMasters() {
           <div className="master-tabs" role="tablist" aria-label="Master type">
             {tabs.map((tab) => <button type="button" role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? 'selected' : ''} key={tab} onClick={() => { setActiveTab(tab); setMessage(''); closeForm() }}>{tab}</button>)}
           </div>
-          <button type="button" className="primary-action" onClick={() => setFormOpen(!formOpen)}>＋ Add {activeTab === 'Users' ? 'user' : activeTab.slice(0, -1).toLowerCase()}</button>
+          <div className="toolbar-actions"><button type="button" className="secondary-action" onClick={() => { setShowHistory(!showHistory); closeForm() }}>Edit history</button><button type="button" className="primary-action" onClick={() => { setShowHistory(false); setFormOpen(!formOpen) }}>＋ Add {activeTab === 'Users' ? 'user' : activeTab.slice(0, -1).toLowerCase()}</button></div>
         </div>
 
         {formOpen && activeTab !== 'Users' && <form className="master-form" onSubmit={saveBasic}>
@@ -128,7 +154,7 @@ export default function SharedMasters() {
           { key: 'name', label: 'Name', width: '260px', render: (record) => record.name },
           { key: 'context', label: 'Record type', width: '230px', render: () => `Controlled ${activeTab.slice(0, -1).toLowerCase()} master` },
           { key: 'status', label: 'Status', width: '120px', render: (record) => <span className={`status ${record.status.toLowerCase()}`}>{record.status}</span> },
-          { key: 'actions', label: 'Actions', width: '130px', render: (record) => <button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button> },
+          { key: 'actions', label: 'Actions', width: '210px', render: (record) => <div className="table-actions"><button className="table-action" type="button" onClick={() => editBasic(record)}>Edit</button><button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button></div> },
         ]} empty={<div className="empty-state"><span>◫</span><strong>No {activeTab.toLowerCase()} recorded</strong><p>Add the first governed record to begin building the organisation master.</p></div>} /> : <DataTable rows={filteredUsers} rowKey={(record) => record.id} columns={[
           { key: 'employee', label: 'Employee', sticky: true, width: '220px', render: (record) => <><strong>{record.employeeCode}</strong><small>{record.name}</small></> },
           { key: 'department', label: 'Department', width: '190px', render: (record) => departments.find((item) => item.id === record.departmentId)?.name ?? 'Unavailable' },
@@ -137,8 +163,9 @@ export default function SharedMasters() {
           { key: 'email', label: 'Email', width: '230px', render: (record) => record.email },
           { key: 'phone', label: 'Contact', width: '150px', render: (record) => record.phone },
           { key: 'status', label: 'Status', width: '110px', render: (record) => <span className={`status ${record.status.toLowerCase()}`}>{record.status}</span> },
-          { key: 'actions', label: 'Actions', width: '130px', render: (record) => <button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button> },
+          { key: 'actions', label: 'Actions', width: '210px', render: (record) => <div className="table-actions"><button className="table-action" type="button" onClick={() => editUser(record)}>Edit</button><button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button></div> },
         ]} empty={<div className="empty-state"><span>◫</span><strong>No users recorded</strong><p>Add the first governed user record.</p></div>} />}</div>
+        {showHistory && <DataTable rows={[...audit.events].filter((event) => event.module === activeTab).reverse()} rowKey={(event) => event.id} columns={[{ key: 'time', label: 'Timestamp', sticky: true, width: '190px', render: (event) => new Date(event.timestamp).toLocaleString('en-IN') }, { key: 'record', label: 'Record', width: '160px', render: (event) => event.recordCode }, { key: 'action', label: 'Action', width: '130px', render: (event) => event.action }, { key: 'fields', label: 'Changed fields', width: '360px', render: (event) => event.changedFields }, { key: 'actor', label: 'Changed by', width: '220px', render: (event) => event.actor }]} empty={<div className="empty-state"><span>◷</span><strong>No edit history</strong><p>Future changes to this master will be recorded here.</p></div>} />}
       </section>
     </>
   )
