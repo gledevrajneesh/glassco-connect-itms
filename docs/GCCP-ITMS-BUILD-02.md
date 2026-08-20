@@ -7,6 +7,8 @@
 - Asset Type Master linked to groups and default inspection frequency
 - Brand and Model Master linked to asset types and warranty period
 - Standard Configuration Profiles linked to asset types
+- Governed Brand Master with an additive starter catalogue of commonly used IT brands
+- Default IT asset groups and asset types with lifecycle and inspection defaults
 - Active, inactive and reactivation lifecycle
 - Responsive localhost forms and browser-local persistence
 
