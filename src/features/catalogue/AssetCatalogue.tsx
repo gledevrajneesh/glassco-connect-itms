@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useLocalStore } from '../../lib/localStore'
+import DataTable from '../../components/DataTable'
 
 type Status = 'Active' | 'Inactive'
 type TrackingMode = 'Serialized asset' | 'Accessory / component' | 'Consumable'
@@ -131,7 +132,13 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
       </form>}
       {message && <div className="success-message" role="status">✓ {message}</div>}
       <div className="master-summary"><div><span>Total records</span><strong>{records.length}</strong></div><div><span>Active</span><strong>{activeCount}</strong></div><div><span>Inactive</span><strong>{records.length - activeCount}</strong></div></div>
-      <div className="records">{records.map((record) => <article className="record" key={record.id}><div><strong>{record.code} · {record.name}</strong><span>{recordContext(record)}</span></div><div className="record-actions"><span className={`status ${record.status.toLowerCase()}`}>{record.status}</span><button type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button></div></article>)}{records.length === 0 && <div className="empty-state"><span>▣</span><strong>No {tab.toLowerCase()} recorded</strong><p>Add the first controlled record to continue.</p></div>}</div>
+      <DataTable rows={records} rowKey={(record) => record.id} columns={[
+        { key: 'code', label: 'Code', sticky: true, width: '160px', render: (record) => <strong>{record.code}</strong> },
+        { key: 'name', label: 'Name', width: '260px', render: (record) => record.name },
+        { key: 'details', label: 'Controlled details', width: '420px', render: (record) => recordContext(record) },
+        { key: 'status', label: 'Status', width: '110px', render: (record) => <span className={`status ${record.status.toLowerCase()}`}>{record.status}</span> },
+        { key: 'actions', label: 'Actions', width: '130px', render: (record) => <button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button> },
+      ]} empty={<div className="empty-state"><span>▣</span><strong>No {tab.toLowerCase()} recorded</strong><p>Add the first controlled record to continue.</p></div>} />
     </section>
   </>
 }

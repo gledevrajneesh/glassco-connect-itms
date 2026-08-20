@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useLocalStore } from '../../lib/localStore'
+import DataTable from '../../components/DataTable'
 
 type Status = 'Active' | 'Inactive'
 type MasterType = 'Departments' | 'Locations' | 'User groups' | 'Users'
@@ -122,11 +123,22 @@ export default function SharedMasters() {
 
         {activeTab === 'Users' && <div className="filter-row"><label>Department filter<select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)}><option value="all">All departments</option>{departments.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label></div>}
 
-        <div className="records" aria-live="polite">
-          {activeTab !== 'Users' && currentBasic.map((record) => <article className="record" key={record.id}><div><strong>{record.code} · {record.name}</strong><span>Controlled {activeTab.slice(0, -1).toLowerCase()} master record</span></div><div className="record-actions"><span className={`status ${record.status.toLowerCase()}`}>{record.status}</span><button type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button></div></article>)}
-          {activeTab === 'Users' && filteredUsers.map((record) => <article className="record user-record" key={record.id}><div><strong>{record.employeeCode} · {record.name}</strong><span>{departments.find((item) => item.id === record.departmentId)?.name ?? 'Department unavailable'} · {record.email} · {record.phone}</span></div><div className="record-actions"><span className={`status ${record.status.toLowerCase()}`}>{record.status}</span><button type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button></div></article>)}
-          {total === 0 && <div className="empty-state"><span>◫</span><strong>No {activeTab.toLowerCase()} recorded</strong><p>Add the first governed record to begin building the organisation master.</p></div>}
-        </div>
+        <div aria-live="polite">{activeTab !== 'Users' ? <DataTable rows={currentBasic} rowKey={(record) => record.id} columns={[
+          { key: 'code', label: 'Code', sticky: true, width: '140px', render: (record) => <strong>{record.code}</strong> },
+          { key: 'name', label: 'Name', width: '260px', render: (record) => record.name },
+          { key: 'context', label: 'Record type', width: '230px', render: () => `Controlled ${activeTab.slice(0, -1).toLowerCase()} master` },
+          { key: 'status', label: 'Status', width: '120px', render: (record) => <span className={`status ${record.status.toLowerCase()}`}>{record.status}</span> },
+          { key: 'actions', label: 'Actions', width: '130px', render: (record) => <button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button> },
+        ]} empty={<div className="empty-state"><span>◫</span><strong>No {activeTab.toLowerCase()} recorded</strong><p>Add the first governed record to begin building the organisation master.</p></div>} /> : <DataTable rows={filteredUsers} rowKey={(record) => record.id} columns={[
+          { key: 'employee', label: 'Employee', sticky: true, width: '220px', render: (record) => <><strong>{record.employeeCode}</strong><small>{record.name}</small></> },
+          { key: 'department', label: 'Department', width: '190px', render: (record) => departments.find((item) => item.id === record.departmentId)?.name ?? 'Unavailable' },
+          { key: 'location', label: 'Location', width: '180px', render: (record) => locations.find((item) => item.id === record.locationId)?.name ?? 'Unavailable' },
+          { key: 'group', label: 'User group', width: '170px', render: (record) => groups.find((item) => item.id === record.groupId)?.name ?? 'Unavailable' },
+          { key: 'email', label: 'Email', width: '230px', render: (record) => record.email },
+          { key: 'phone', label: 'Contact', width: '150px', render: (record) => record.phone },
+          { key: 'status', label: 'Status', width: '110px', render: (record) => <span className={`status ${record.status.toLowerCase()}`}>{record.status}</span> },
+          { key: 'actions', label: 'Actions', width: '130px', render: (record) => <button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button> },
+        ]} empty={<div className="empty-state"><span>◫</span><strong>No users recorded</strong><p>Add the first governed user record.</p></div>} />}</div>
       </section>
     </>
   )
