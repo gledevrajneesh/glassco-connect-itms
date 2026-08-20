@@ -2,6 +2,7 @@ import { useState } from 'react'
 import './App.css'
 import SharedMasters from './features/masters/SharedMasters'
 import AppLauncher from './features/platform/AppLauncher'
+import AssetCatalogue from './features/catalogue/AssetCatalogue'
 
 const modules = [
   ['Shared Masters', 'Users, departments, sites and vendors', '◫'],
@@ -42,7 +43,7 @@ function App() {
         {menuOpen && <button type="button" className="backdrop" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
 
         <main>
-          {section === 'Shared Masters' ? <SharedMasters /> : <>
+          {section === 'Shared Masters' ? <SharedMasters /> : section === 'Asset Inventory' ? <AssetCatalogue /> : <>
           <section className="page-heading">
             <div><span className="eyebrow">GCCP-ITMS-FOUNDATION-01</span><h1>IT Asset Lifecycle Dashboard</h1><p>One governed source for IT inventory, custody, maintenance and assurance.</p></div>
             <span className="phase">PHASE 1 · LOCALHOST</span>
