@@ -37,7 +37,7 @@ const defaultBrands: Brand[] = [
 
 function createId(prefix: string) { return `${prefix}-${crypto.randomUUID()}` }
 
-export default function AssetCatalogue() {
+export default function AssetCatalogue({ embedded = false }: { embedded?: boolean }) {
   const [tab, setTab] = useState<CatalogueTab>('Vendors')
   const [formOpen, setFormOpen] = useState(false)
   const [message, setMessage] = useState('')
@@ -101,7 +101,7 @@ export default function AssetCatalogue() {
   }
 
   return <>
-    <section className="page-heading"><div><span className="eyebrow">GCCP-ITMS-BUILD-02</span><h1>Vendor & Asset Catalogue</h1><p>Standardize suppliers, asset classifications, models and approved configurations.</p></div><span className="phase">CONTROLLED MASTERS</span></section>
+    {!embedded && <section className="page-heading"><div><span className="eyebrow">GCCP-ITMS-BUILD-02</span><h1>Vendor & Asset Catalogue</h1><p>Standardize suppliers, asset classifications, models and approved configurations.</p></div><span className="phase">CONTROLLED MASTERS</span></section>}
     <section className="master-panel">
       <div className="master-toolbar"><div className="master-tabs" role="tablist" aria-label="Catalogue master type">{tabs.map((item) => <button type="button" role="tab" aria-selected={tab === item} className={tab === item ? 'selected' : ''} key={item} onClick={() => { setTab(item); setMessage(''); resetForm() }}>{item}</button>)}</div><button type="button" className="primary-action" onClick={() => setFormOpen(!formOpen)}>＋ Add record</button></div>
       {formOpen && <form className="master-form catalogue-form" onSubmit={saveRecord}>
