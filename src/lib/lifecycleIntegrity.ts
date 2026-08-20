@@ -3,7 +3,7 @@ type User = { id: string; employeeCode: string; status: string }
 type Asset = { id: string; assetId: string; stockStatus: string }
 type Allocation = { id: string; code: string; userId: string; assetIds: string[]; state: string }
 type Movement = { id: string; code: string; kind: 'Transfer' | 'Return'; assetId: string; fromUserId: string; toUserId: string; state: string }
-type Lifecycle = { id: string; code: string; kind: 'Onboarding' | 'Offboarding'; userId: string; assetIds: string[]; state: string }
+type Lifecycle = { id: string; code: string; kind: 'Onboarding' | 'Offboarding'; userId: string; assetIds: string[]; deactivateUser?: boolean; state: string }
 
 export function auditLifecycleIntegrity(users: User[], assets: Asset[], allocations: Allocation[], movements: Movement[], lifecycle: Lifecycle[]) {
   const issues: IntegrityIssue[] = []
@@ -29,7 +29,7 @@ export function auditLifecycleIntegrity(users: User[], assets: Asset[], allocati
     if (item.stockStatus === 'Reserved' && !pendingAssetIds.includes(item.id)) issues.push({ id: `orphan-reserved-${item.id}`, severity: 'Warning', entity: item.assetId, message: 'Inventory says Reserved but no open allocation request exists.' })
   })
   lifecycle.filter((item) => item.kind === 'Offboarding' && item.state === 'Completed').forEach((item) => {
-    if (user(item.userId)?.status === 'Active') issues.push({ id: `offboard-active-${item.id}`, severity: 'Critical', entity: item.code, message: 'Completed offboarding exists but employee remains Active.' })
+    if (item.deactivateUser !== false && user(item.userId)?.status === 'Active') issues.push({ id: `offboard-active-${item.id}`, severity: 'Critical', entity: item.code, message: 'Offboarding required User Master deactivation but employee remains Active.' })
     if ([...custody.values()].includes(item.userId)) issues.push({ id: `offboard-custody-${item.id}`, severity: 'Critical', entity: item.code, message: 'Completed offboarding exists but employee still retains asset custody.' })
   })
   return issues

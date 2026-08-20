@@ -6,7 +6,7 @@ import type { CustodyMovement } from '../../lib/custodyLifecycle'
 type User = { id: string; employeeCode: string; status: string }
 type Asset = { id: string; assetId: string; stockStatus: string }
 type Allocation = { id: string; code: string; userId: string; assetIds: string[]; state: string }
-type Lifecycle = { id: string; code: string; kind: 'Onboarding' | 'Offboarding'; userId: string; assetIds: string[]; state: string }
+type Lifecycle = { id: string; code: string; kind: 'Onboarding' | 'Offboarding'; userId: string; assetIds: string[]; deactivateUser?: boolean; state: string }
 
 export default function LifecycleIntegrity() {
   const [users] = useLocalStore<User[]>('itms.users.v1', [])
