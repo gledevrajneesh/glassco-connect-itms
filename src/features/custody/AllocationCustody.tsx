@@ -8,10 +8,11 @@ type Asset = { id: string; assetId: string; modelId: string; serialNumber: strin
 type AssetType = { id: string; code: string; name: string; status: Status }
 type Model = { id: string; brand: string; name: string; typeId: string }
 type ApprovalState = 'Pending Asset Manager' | 'Pending IT Head' | 'Active custody'
-type Allocation = { id: string; code: string; departmentId: string; userId: string; assetIds: string[]; allocationDate: string; expectedReturnDate: string; purpose: string; state: ApprovalState; requestedBy: string; requestedAt: string; assetManagerApprovedAt: string; itHeadApprovedAt: string }
+type AllocationKind = 'New allocation' | 'Replacement' | 'Temporary issue'
+type Allocation = { id: string; code: string; departmentId: string; userId: string; assetIds: string[]; allocationKind?: AllocationKind; replacementAssetId?: string; allocationDate: string; expectedReturnDate: string; purpose: string; state: ApprovalState; requestedBy: string; requestedAt: string; assetManagerApprovedAt: string; itHeadApprovedAt: string }
 
 const today = () => new Date().toISOString().slice(0, 10)
-const blankForm = { departmentId: '', userId: '', assetIds: [] as string[], allocationDate: today(), expectedReturnDate: '', purpose: '' }
+const blankForm = { departmentId: '', userId: '', assetIds: [] as string[], allocationKind: 'New allocation' as AllocationKind, replacementAssetId: '', allocationDate: today(), expectedReturnDate: '', purpose: '' }
 
 export default function AllocationCustody() {
   const [departments] = useLocalStore<Department[]>('itms.departments.v1', [])
@@ -31,6 +32,8 @@ export default function AllocationCustody() {
   const availableCategoryIds = useMemo(() => new Set(eligibleAssets.map((asset) => models.find((model) => model.id === asset.modelId)?.typeId).filter(Boolean)), [eligibleAssets, models])
   const categoryAssets = eligibleAssets.filter((asset) => models.find((model) => model.id === asset.modelId)?.typeId === categoryId)
   const activeCustody = allocations.filter((allocation) => allocation.state === 'Active custody')
+  const employeeCustodyAssetIds = new Set(activeCustody.filter((allocation) => allocation.userId === form.userId).flatMap((allocation) => allocation.assetIds))
+  const employeeCustodyAssets = assets.filter((asset) => employeeCustodyAssetIds.has(asset.id) && asset.stockStatus === 'Allocated')
 
   function nextCode() { return `ALLOC-${new Date().getFullYear()}-${String(allocations.length + 1).padStart(4, '0')}` }
   function closeForm() { setFormOpen(false); setForm(blankForm); setCategoryId('') }
@@ -39,7 +42,7 @@ export default function AllocationCustody() {
 
   function createAllocation(event: FormEvent) {
     event.preventDefault()
-    if (form.assetIds.length === 0) return
+    if (form.assetIds.length === 0 || (form.allocationKind === 'Replacement' && !form.replacementAssetId)) return
     const allocation: Allocation = { id: `allocation-${crypto.randomUUID()}`, code: nextCode(), ...form, state: 'Pending Asset Manager', requestedBy: 'dev@glasscolabs.com', requestedAt: new Date().toISOString(), assetManagerApprovedAt: '', itHeadApprovedAt: '' }
     setAllocations((current) => [...current, allocation])
     setMessage(`${allocation.code} submitted for IT Asset Manager approval.`)
@@ -55,11 +58,12 @@ export default function AllocationCustody() {
     const allocation = allocations.find((item) => item.id === id)
     if (!allocation || allocation.state !== 'Pending IT Head') return
     setAllocations((current) => current.map((item) => item.id === id ? { ...item, state: 'Active custody', itHeadApprovedAt: new Date().toISOString() } : item))
-    setAssets((current) => current.map((asset) => allocation.assetIds.includes(asset.id) ? { ...asset, stockStatus: 'Allocated' } : asset))
+    setAssets((current) => current.map((asset) => allocation.assetIds.includes(asset.id) ? { ...asset, stockStatus: 'Allocated' } : allocation.allocationKind === 'Replacement' && asset.id === allocation.replacementAssetId ? { ...asset, stockStatus: 'Returned - inspection pending' } : asset))
     setMessage(`${allocation.code} approved. Custody is now active and assets are marked Allocated.`)
   }
 
   function assetLabel(asset: Asset) { const model = models.find((item) => item.id === asset.modelId); return `${asset.assetId} · ${model ? `${model.brand} ${model.name}` : 'Model unavailable'} · ${asset.serialNumber || 'No serial'}` }
+  function formatStamp(value: string) { return value ? new Date(value).toLocaleString('en-IN') : 'Pending' }
 
   return <>
     <section className="page-heading"><div><span className="eyebrow">GCCP-ITMS-BUILD-04</span><h1>Allocation & Custody</h1><p>Control multi-asset issue, dual approval and accountable employee custody.</p></div><span className="phase">DUAL APPROVAL</span></section>
@@ -67,7 +71,9 @@ export default function AllocationCustody() {
       <div className="operation-heading"><div><span className="eyebrow">DEPARTMENT-FIRST ALLOCATION</span><h2>Asset allocation requests</h2><p>Only active employees and uncommitted in-stock assets are available.</p></div><button type="button" className="primary-action" onClick={() => setFormOpen(!formOpen)}>＋ New allocation</button></div>
       {formOpen && <form className="master-form allocation-form" onSubmit={createAllocation}>
         <label>Department<select required value={form.departmentId} onChange={(event) => setForm({ ...form, departmentId: event.target.value, userId: '' })}><option value="">Select department</option>{departments.filter((item) => item.status === 'Active').map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label>
-        <label>Employee<select required disabled={!form.departmentId} value={form.userId} onChange={(event) => setForm({ ...form, userId: event.target.value })}><option value="">{form.departmentId ? 'Select employee' : 'Select department first'}</option>{departmentUsers.map((item) => <option value={item.id} key={item.id}>{item.employeeCode} · {item.name}</option>)}</select></label>
+        <label>Employee<select required disabled={!form.departmentId} value={form.userId} onChange={(event) => setForm({ ...form, userId: event.target.value, replacementAssetId: '' })}><option value="">{form.departmentId ? 'Select employee' : 'Select department first'}</option>{departmentUsers.map((item) => <option value={item.id} key={item.id}>{item.employeeCode} · {item.name}</option>)}</select></label>
+        <label>Allocation reason<select value={form.allocationKind} onChange={(event) => setForm({ ...form, allocationKind: event.target.value as AllocationKind, replacementAssetId: '' })}><option>New allocation</option><option>Replacement</option><option>Temporary issue</option></select></label>
+        {form.allocationKind === 'Replacement' && <label>Asset being replaced<select required disabled={!form.userId} value={form.replacementAssetId} onChange={(event) => setForm({ ...form, replacementAssetId: event.target.value })}><option value="">{form.userId ? 'Select current asset' : 'Select employee first'}</option>{employeeCustodyAssets.map((asset) => <option value={asset.id} key={asset.id}>{assetLabel(asset)}</option>)}</select></label>}
         <label>Asset category<select required value={categoryId} onChange={(event) => changeCategory(event.target.value)}><option value="">Select category first</option>{assetTypes.filter((item) => item.status === 'Active' && availableCategoryIds.has(item.id)).map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label>
         <label>Allocation date<input required type="date" value={form.allocationDate} onChange={(event) => setForm({ ...form, allocationDate: event.target.value })} /></label>
         <label>Expected return date<input type="date" min={form.allocationDate} value={form.expectedReturnDate} onChange={(event) => setForm({ ...form, expectedReturnDate: event.target.value })} /></label>
@@ -79,9 +85,10 @@ export default function AllocationCustody() {
       {message && <div className="success-message" role="status">✓ {message}</div>}
       <div className="master-summary"><div><span>Allocation records</span><strong>{allocations.length}</strong></div><div><span>Pending approval</span><strong>{allocations.filter((item) => item.state !== 'Active custody').length}</strong></div><div><span>Active custody</span><strong>{activeCustody.length}</strong></div></div>
       <div className="records allocation-records">{[...allocations].reverse().map((allocation) => <article className="allocation-card" key={allocation.id}>
-        <div className="allocation-main"><div><strong>{allocation.code} · {users.find((item) => item.id === allocation.userId)?.name ?? 'User unavailable'}</strong><span>{departments.find((item) => item.id === allocation.departmentId)?.name ?? 'Department unavailable'} · {allocation.assetIds.length} asset(s) · {allocation.allocationDate}</span><p>{allocation.purpose}</p></div><span className={`custody-state ${allocation.state === 'Active custody' ? 'active' : 'pending'}`}>{allocation.state}</span></div>
+        <div className="allocation-main"><div><strong>{allocation.code} · {users.find((item) => item.id === allocation.userId)?.name ?? 'User unavailable'}</strong><span>{allocation.allocationKind ?? 'New allocation'} · {departments.find((item) => item.id === allocation.departmentId)?.name ?? 'Department unavailable'} · {allocation.assetIds.length} asset(s) · {allocation.allocationDate}</span><p>{allocation.purpose}</p>{allocation.replacementAssetId && <p className="replacement-reference">Replaces: {assetLabel(assets.find((asset) => asset.id === allocation.replacementAssetId) ?? { id: allocation.replacementAssetId, assetId: 'Asset unavailable', modelId: '', serialNumber: '', stockStatus: '' })}</p>}</div><span className={`custody-state ${allocation.state === 'Active custody' ? 'active' : 'pending'}`}>{allocation.state}</span></div>
         <div className="allocated-assets">{allocation.assetIds.map((id) => <span key={id}>{assetLabel(assets.find((asset) => asset.id === id) ?? { id, assetId: 'Asset unavailable', modelId: '', serialNumber: '', stockStatus: '' })}</span>)}</div>
         <div className="approval-trail"><span className={allocation.assetManagerApprovedAt ? 'complete' : ''}>Asset Manager {allocation.assetManagerApprovedAt ? '✓' : 'pending'}</span><span className={allocation.itHeadApprovedAt ? 'complete' : ''}>IT Head {allocation.itHeadApprovedAt ? '✓' : 'pending'}</span>{allocation.state === 'Pending Asset Manager' && <button type="button" onClick={() => approveAssetManager(allocation.id)}>Approve as Asset Manager</button>}{allocation.state === 'Pending IT Head' && <button type="button" onClick={() => approveITHead(allocation.id)}>Approve as IT Head</button>}</div>
+        <div className="allocation-history"><strong>Allocation history</strong><span>Requested · {formatStamp(allocation.requestedAt)} · {allocation.requestedBy}</span><span>Asset Manager approval · {formatStamp(allocation.assetManagerApprovedAt)}</span><span>IT Head approval / custody activated · {formatStamp(allocation.itHeadApprovedAt)}</span>{allocation.replacementAssetId && allocation.itHeadApprovedAt && <span>Replaced asset moved to inspection pending · {formatStamp(allocation.itHeadApprovedAt)}</span>}</div>
       </article>)}{allocations.length === 0 && <div className="empty-state"><span>⇄</span><strong>No allocation records</strong><p>Create the first request to begin controlled custody.</p></div>}</div>
     </section>
   </>
