@@ -16,7 +16,7 @@ const blank: MovementForm = { kind: 'Transfer', assetId: '', toDepartmentId: '',
 export function deriveCustody(allocations: Allocation[], movements: CustodyMovement[], assets: Asset[]) {
   const custody = new Map<string, { userId: string; since: string; source: string }>()
   allocations.filter((item) => item.state === 'Active custody').forEach((item) => item.assetIds.forEach((assetId) => {
-    if (assets.find((asset) => asset.id === assetId)?.stockStatus === 'Allocated') custody.set(assetId, { userId: item.userId, since: item.allocationDate, source: 'Allocation' })
+    if (assets.some((asset) => asset.id === assetId)) custody.set(assetId, { userId: item.userId, since: item.allocationDate, source: 'Allocation' })
   }))
   movements.filter((item) => item.state === 'Completed').forEach((item) => {
     if (item.kind === 'Return') custody.delete(item.assetId)
