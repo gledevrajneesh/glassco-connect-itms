@@ -7,11 +7,12 @@ type User = { id: string; employeeCode: string; name: string; departmentId: stri
 type Asset = { id: string; assetId: string; modelId: string; serialNumber: string; stockStatus: string }
 type Model = { id: string; brand: string; name: string }
 type Allocation = { userId: string; assetIds: string[]; allocationDate: string; state: string }
-export type CustodyMovement = { id: string; code: string; kind: 'Transfer' | 'Return'; assetId: string; fromUserId: string; toDepartmentId: string; toUserId: string; plannedDate: string; effectiveDate: string; reason: string; state: 'Pending Asset Manager' | 'Pending IT Head' | 'Completed'; requestedBy: string; requestedAt: string; assetManagerApprovedAt: string; itHeadApprovedAt: string }
+export type AssetDisposition = 'In stock' | 'Under repair' | 'Scrap'
+export type CustodyMovement = { id: string; code: string; kind: 'Transfer' | 'Return'; assetId: string; fromUserId: string; toDepartmentId: string; toUserId: string; disposition?: AssetDisposition; plannedDate: string; effectiveDate: string; reason: string; state: 'Pending Asset Manager' | 'Pending IT Head' | 'Completed'; requestedBy: string; requestedAt: string; assetManagerApprovedAt: string; itHeadApprovedAt: string }
 
 const today = () => new Date().toISOString().slice(0, 10)
-type MovementForm = { kind: 'Transfer' | 'Return'; assetId: string; toDepartmentId: string; toUserId: string; plannedDate: string; effectiveDate: string; reason: string }
-const blank: MovementForm = { kind: 'Transfer', assetId: '', toDepartmentId: '', toUserId: '', plannedDate: today(), effectiveDate: today(), reason: '' }
+type MovementForm = { kind: 'Transfer' | 'Return'; assetId: string; toDepartmentId: string; toUserId: string; disposition: AssetDisposition; plannedDate: string; effectiveDate: string; reason: string }
+const blank: MovementForm = { kind: 'Transfer', assetId: '', toDepartmentId: '', toUserId: '', disposition: 'In stock', plannedDate: today(), effectiveDate: today(), reason: '' }
 
 export function deriveCustody(allocations: Allocation[], movements: CustodyMovement[], assets: Asset[]) {
   const custody = new Map<string, { userId: string; since: string; source: string }>()
@@ -54,7 +55,7 @@ export default function CustodyMovements() {
   function headApprove(id: string) {
     const record = movements.find((item) => item.id === id); if (!record) return
     setMovements((current) => current.map((item) => item.id === id ? { ...item, state: 'Completed', itHeadApprovedAt: new Date().toISOString() } : item))
-    if (record.kind === 'Return') setAssets((current) => current.map((asset) => asset.id === record.assetId ? { ...asset, stockStatus: 'Returned - inspection pending' } : asset))
+    setAssets((current) => current.map((asset) => asset.id === record.assetId ? { ...asset, stockStatus: record.kind === 'Return' ? (record.disposition ?? 'In stock') : 'Allocated' } : asset))
     setMessage(`${record.code} completed. ${record.kind === 'Return' ? 'Asset awaits inspection before restocking.' : 'New employee custody is active.'}`)
   }
 
@@ -64,6 +65,7 @@ export default function CustodyMovements() {
       <label>Movement type<select value={form.kind} onChange={(event) => setForm({ ...blank, kind: event.target.value as 'Transfer' | 'Return' })}><option>Transfer</option><option>Return</option></select></label>
       <label>Currently allocated asset<select required value={form.assetId} onChange={(event) => setForm({ ...form, assetId: event.target.value, toUserId: '' })}><option value="">Select asset</option>{available.map((asset) => <option value={asset.id} key={asset.id}>{label(asset.id)} · {userLabel(custody.get(asset.id)?.userId ?? '')}</option>)}</select></label>
       {form.kind === 'Transfer' && <><label>New department<select required value={form.toDepartmentId} onChange={(event) => setForm({ ...form, toDepartmentId: event.target.value, toUserId: '' })}><option value="">Select department</option>{departments.filter((item) => item.status === 'Active').map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label><label>New employee<select required disabled={!form.toDepartmentId} value={form.toUserId} onChange={(event) => setForm({ ...form, toUserId: event.target.value })}><option value="">Select employee</option>{targetUsers.map((item) => <option value={item.id} key={item.id}>{item.employeeCode} · {item.name}</option>)}</select></label></>}
+      {form.kind === 'Return' && <label>Return disposition<select required value={form.disposition} onChange={(event) => setForm({ ...form, disposition: event.target.value as AssetDisposition })}><option>In stock</option><option>Under repair</option><option>Scrap</option></select></label>}
       <label>Planned date<input required type="date" value={form.plannedDate} onChange={(event) => setForm({ ...form, plannedDate: event.target.value })} /></label><label>Effective date<input required type="date" min={form.plannedDate} value={form.effectiveDate} onChange={(event) => setForm({ ...form, effectiveDate: event.target.value })} /></label>
       <label className="wide-field">Reason / handover note<textarea required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></label>
       <div className="approval-preview"><strong>Approval route</strong><span>1. IT Asset Manager</span><span>2. IT Head</span><span>3. Custody ledger updates</span></div><div className="form-actions"><button type="button" onClick={() => setOpen(false)}>Cancel</button><button className="primary-action" type="submit">Submit movement</button></div>
