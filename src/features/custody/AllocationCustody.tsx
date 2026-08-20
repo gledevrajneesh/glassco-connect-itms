@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useLocalStore } from '../../lib/localStore'
 import RelationshipLedger from './RelationshipLedger'
+import CustodyMovements from './CustodyMovements'
 import DataTable from '../../components/DataTable'
 
 type Status = 'Active' | 'Inactive'
@@ -17,7 +18,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 const blankForm = { departmentId: '', userId: '', assetIds: [] as string[], allocationKind: 'New allocation' as AllocationKind, replacementAssetId: '', allocationDate: today(), expectedReturnDate: '', purpose: '' }
 
 export default function AllocationCustody() {
-  const [workspace, setWorkspace] = useState<'Allocation workflow' | 'Relationship ledger'>('Allocation workflow')
+  const [workspace, setWorkspace] = useState<'Allocation workflow' | 'Transfers & returns' | 'Relationship ledger'>('Allocation workflow')
   const [departments] = useLocalStore<Department[]>('itms.departments.v1', [])
   const [users] = useLocalStore<User[]>('itms.users.v1', [])
   const [assets, setAssets] = useLocalStore<Asset[]>('itms.assets.v1', [])
@@ -71,8 +72,8 @@ export default function AllocationCustody() {
 
   return <>
     <section className="page-heading"><div><span className="eyebrow">GCCP-ITMS-BUILD-04</span><h1>Allocation & Custody</h1><p>Control multi-asset issue, dual approval and accountable employee custody.</p></div><span className="phase">DUAL APPROVAL</span></section>
-    <nav className="workspace-tabs" aria-label="Allocation and custody workspace">{(['Allocation workflow', 'Relationship ledger'] as const).map((item) => <button type="button" className={workspace === item ? 'selected' : ''} onClick={() => setWorkspace(item)} key={item}>{item}</button>)}</nav>
-    {workspace === 'Relationship ledger' ? <RelationshipLedger /> : <section className="master-panel custody-panel">
+    <nav className="workspace-tabs" aria-label="Allocation and custody workspace">{(['Allocation workflow', 'Transfers & returns', 'Relationship ledger'] as const).map((item) => <button type="button" className={workspace === item ? 'selected' : ''} onClick={() => setWorkspace(item)} key={item}>{item}</button>)}</nav>
+    {workspace === 'Relationship ledger' ? <RelationshipLedger /> : workspace === 'Transfers & returns' ? <CustodyMovements /> : <section className="master-panel custody-panel">
       <div className="operation-heading"><div><span className="eyebrow">DEPARTMENT-FIRST ALLOCATION</span><h2>Asset allocation requests</h2><p>Only active employees and uncommitted in-stock assets are available.</p></div><button type="button" className="primary-action" onClick={() => setFormOpen(!formOpen)}>＋ New allocation</button></div>
       {formOpen && <form className="master-form allocation-form" onSubmit={createAllocation}>
         <label>Department<select required value={form.departmentId} onChange={(event) => setForm({ ...form, departmentId: event.target.value, userId: '' })}><option value="">Select department</option>{departments.filter((item) => item.status === 'Active').map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label>
