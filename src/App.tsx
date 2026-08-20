@@ -4,17 +4,14 @@ import SharedMasters from './features/masters/SharedMasters'
 import AppLauncher from './features/platform/AppLauncher'
 import InventoryWorkspace from './features/inventory/InventoryWorkspace'
 import AllocationCustody from './features/custody/AllocationCustody'
+import Icon, { type IconName } from './components/Icon'
 
 const modules = [
-  ['Shared Masters', 'Users, departments, sites and vendors', '◫'],
-  ['Asset Inventory', 'Stock, identity, condition and lifecycle', '▣'],
-  ['Allocation & Custody', 'Issue, transfer, return and clearance', '⇄'],
-  ['Maintenance & Inspection', 'Plans, checklists, calendar and repairs', '✓'],
-  ['Assurance & Controls', 'Verification, exceptions and disposal', '◇'],
-  ['Reports & Analytics', 'Dashboards, forecasts and audit trail', '▥'],
-]
+  ['Shared Masters', 'Users, departments, sites and vendors', 'masters'], ['Asset Inventory', 'Stock, identity, condition and lifecycle', 'inventory'], ['Allocation & Custody', 'Issue, transfer, return and clearance', 'allocation'], ['Maintenance & Inspection', 'Plans, checklists, calendar and repairs', 'maintenance'], ['Assurance & Controls', 'Verification, exceptions and disposal', 'assurance'], ['Reports & Analytics', 'Dashboards, forecasts and audit trail', 'reports'],
+] as [string, string, IconName][]
 
 const navItems = ['Dashboard', 'Shared Masters', 'Asset Inventory', 'Allocation & Custody', 'Maintenance & Inspection', 'Assurance & Controls', 'Reports & Analytics']
+const navIcons: IconName[] = ['dashboard', 'masters', 'inventory', 'allocation', 'maintenance', 'assurance', 'reports']
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -37,7 +34,7 @@ function App() {
         <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
           <div className="sidebar-label">IT Asset Lifecycle</div>
           <nav aria-label="Primary navigation">
-            {navItems.map((item, index) => <button type="button" className={section === item ? 'active' : ''} key={item} onClick={() => { setSection(item); setMenuOpen(false) }}><span>{index === 0 ? '⌂' : '›'}</span>{item}</button>)}
+            {navItems.map((item, index) => <button type="button" className={section === item ? 'active' : ''} key={item} onClick={() => { setSection(item); setMenuOpen(false) }}><Icon name={navIcons[index]} size={18}/>{item}</button>)}
           </nav>
           <div className="sidebar-footer"><strong>Controlled system</strong><span>Local development foundation</span></div>
         </aside>
@@ -59,7 +56,7 @@ function App() {
           <section className="panel">
             <div className="panel-heading"><div><span className="eyebrow">APPROVED OPERATING MODEL</span><h2>Phase 1 capability foundation</h2><p>Modules will be activated through controlled build checkpoints.</p></div><button type="button" disabled>Build 0.1.0</button></div>
             <div className="module-grid">
-              {modules.map(([title, description, icon]) => <article className="module" key={title}><span className="module-icon" aria-hidden="true">{icon}</span><div><h3>{title}</h3><p>{description}</p><span className="planned">PLANNED</span></div></article>)}
+              {modules.map(([title, description, icon]) => <article className="module" key={title}><span className="module-icon"><Icon name={icon} size={22}/></span><div><h3>{title}</h3><p>{description}</p><span className="planned">PLANNED</span></div></article>)}
             </div>
           </section>
 

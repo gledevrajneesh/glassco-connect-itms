@@ -1,17 +1,20 @@
+import Icon, { type IconName } from '../../components/Icon'
+
 type PlatformApp = {
   id: string
   name: string
   description: string
   shortName: string
+  icon: IconName
   state: 'authorized' | 'no-access' | 'planned'
 }
 
 const applications: PlatformApp[] = [
-  { id: 'itms', name: 'IT Asset Management', description: 'Manage IT inventory, custody, maintenance, verification and the complete asset lifecycle.', shortName: 'ITMS', state: 'authorized' },
-  { id: 'support', name: 'IT Support Desk', description: 'Employee tickets and IT service coordination.', shortName: 'ITSD', state: 'no-access' },
-  { id: 'requests', name: 'Non-consumable Requests', description: 'Requests and approval workflows.', shortName: 'NCR', state: 'planned' },
-  { id: 'sales-service', name: 'Sales & Service Tickets', description: 'Sales and customer-service coordination.', shortName: 'SST', state: 'planned' },
-  { id: 'visitors', name: 'Visitor Management', description: 'Visitor approvals and controlled entry.', shortName: 'VMS', state: 'planned' },
+  { id: 'itms', name: 'IT Asset Management', description: 'Manage IT inventory, custody, maintenance, verification and the complete asset lifecycle.', shortName: 'ITMS', icon: 'inventory', state: 'authorized' },
+  { id: 'support', name: 'IT Support Desk', description: 'Employee tickets and IT service coordination.', shortName: 'ITSD', icon: 'support', state: 'no-access' },
+  { id: 'requests', name: 'Non-consumable Requests', description: 'Requests and approval workflows.', shortName: 'NCR', icon: 'requests', state: 'planned' },
+  { id: 'sales-service', name: 'Sales & Service Tickets', description: 'Sales and customer-service coordination.', shortName: 'SST', icon: 'service', state: 'planned' },
+  { id: 'visitors', name: 'Visitor Management', description: 'Visitor approvals and controlled entry.', shortName: 'VMS', icon: 'visitor', state: 'planned' },
 ]
 
 export default function AppLauncher({ onOpen }: { onOpen: (appId: string) => void }) {
@@ -29,9 +32,9 @@ export default function AppLauncher({ onOpen }: { onOpen: (appId: string) => voi
         <div className="section-title"><div><h2>Your applications</h2><p>Applications currently assigned to your account.</p></div><span>{authorized.length} available</span></div>
         <div className="authorized-grid">
           {authorized.map((app) => <button className="authorized-app" type="button" key={app.id} onClick={() => onOpen(app.id)}>
-            <span className="app-monogram">{app.shortName}</span>
+            <span className="app-monogram"><Icon name={app.icon} size={29}/></span>
             <span className="app-copy"><strong>{app.name}</strong><small>{app.description}</small></span>
-            <span className="open-arrow" aria-hidden="true">→</span>
+            <span className="open-arrow"><Icon name="arrow" size={24}/></span>
           </button>)}
         </div>
       </section>
@@ -40,7 +43,7 @@ export default function AppLauncher({ onOpen }: { onOpen: (appId: string) => voi
         <div className="section-title"><div><h2>Other Glassco applications</h2><p>These applications are not currently available to this account.</p></div></div>
         <div className="other-list">
           {otherApps.map((app) => <article className="other-app" key={app.id}>
-            <span className="other-monogram">{app.shortName}</span>
+            <span className="other-monogram"><Icon name={app.icon} size={22}/></span>
             <span className="other-copy"><strong>{app.name}</strong><small>{app.description}</small></span>
             <span className={`access-state ${app.state}`}>{app.state === 'no-access' ? 'NO ACCESS' : 'PLANNED'}</span>
           </article>)}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useLocalStore } from '../../lib/localStore'
 import DataTable from '../../components/DataTable'
+import Icon from '../../components/Icon'
 
 type Status = 'Active' | 'Inactive'
 type Vendor = { id: string; code: string; name: string; status: Status }
@@ -108,4 +109,4 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
   </section>
 }
 
-function EmptyState({ text }: { text: string }) { return <div className="empty-state"><span>▣</span><strong>{text}</strong><p>Use the action above to create the first governed record.</p></div> }
+function EmptyState({ text }: { text: string }) { return <div className="empty-state"><span><Icon name="package" size={32}/></span><strong>{text}</strong><p>Use the action above to create the first governed record.</p></div> }
