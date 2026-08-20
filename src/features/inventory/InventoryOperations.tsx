@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useLocalStore } from '../../lib/localStore'
 import DataTable from '../../components/DataTable'
 import Icon from '../../components/Icon'
+import type { CustodyMovement } from '../../lib/custodyLifecycle'
 
 type Status = 'Active' | 'Inactive'
 type Vendor = { id: string; code: string; name: string; status: Status }
@@ -12,6 +13,9 @@ type Location = { id: string; code: string; name: string; status: Status }
 type ReceiptOutcome = 'Accepted' | 'Quarantined' | 'Rejected'
 type Receipt = { id: string; grn: string; vendorId: string; invoiceNumber: string; purchaseOrder: string; receivedDate: string; receivedBy: string; typeId: string; modelId: string; quantity: number; outcome: ReceiptOutcome; inspectionNote: string; createdAt: string }
 type Asset = { id: string; assetId: string; receiptId: string; typeId: string; modelId: string; serialNumber: string; locationId: string; configId: string; purchaseDate: string; cost: number; condition: string; stockStatus: string; createdAt: string }
+type Allocation = { id: string; code: string; userId: string; assetIds: string[]; replacementAssetId?: string; allocationKind?: string; allocationDate: string; state: string; requestedAt: string; itHeadApprovedAt: string }
+type User = { id: string; employeeCode: string; name: string }
+type Lifecycle = { id: string; code: string; kind: 'Onboarding' | 'Offboarding'; userId: string; assetIds: string[]; disposition?: string; state: string; createdAt: string; effectiveDate: string }
 
 const today = () => new Date().toISOString().slice(0, 10)
 const newReceipt = { vendorId: '', invoiceNumber: '', purchaseOrder: '', receivedDate: today(), receivedBy: 'dev@glasscolabs.com', typeId: '', modelId: '', quantity: '1', outcome: 'Accepted' as ReceiptOutcome, inspectionNote: '' }
@@ -36,6 +40,10 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
   const [locations] = useLocalStore<Location[]>('itms.locations.v1', [])
   const [receipts, setReceipts] = useLocalStore<Receipt[]>('itms.receipts.v1', [])
   const [assets, setAssets] = useLocalStore<Asset[]>('itms.assets.v1', [])
+  const [allocations] = useLocalStore<Allocation[]>('itms.allocations.v1', [])
+  const [movements] = useLocalStore<CustodyMovement[]>('itms.custody-movements.v1', [])
+  const [lifecycle] = useLocalStore<Lifecycle[]>('itms.employee-lifecycle.v1', [])
+  const [users] = useLocalStore<User[]>('itms.users.v1', [])
   const [receiptForm, setReceiptForm] = useState(newReceipt)
   const [assetForm, setAssetForm] = useState(newAsset)
 
@@ -45,11 +53,36 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
   }, [setAssets, setReceipts])
   const [formOpen, setFormOpen] = useState(false)
   const [message, setMessage] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [assetSearch, setAssetSearch] = useState('')
+  const [selectedAssetId, setSelectedAssetId] = useState('')
 
   const acceptedReceipts = useMemo(() => receipts.filter((receipt) => receipt.outcome === 'Accepted' && assets.filter((asset) => asset.receiptId === receipt.id).length < receipt.quantity), [assets, receipts])
   const selectedReceipt = receipts.find((receipt) => receipt.id === assetForm.receiptId)
   const selectedType = types.find((item) => item.id === selectedReceipt?.typeId)
   const registeredForSelected = selectedReceipt ? assets.filter((asset) => asset.receiptId === selectedReceipt.id).length : 0
+  const assetStatuses = [...new Set(assets.map((asset) => asset.stockStatus))].sort()
+  const filteredAssets = useMemo(() => {
+    const query = assetSearch.trim().toLowerCase()
+    return assets.filter((asset) => {
+      const model = models.find((item) => item.id === asset.modelId)
+      return (categoryFilter === 'all' || asset.typeId === categoryFilter) && (statusFilter === 'all' || asset.stockStatus === statusFilter) && (!query || `${asset.assetId} ${asset.serialNumber} ${model?.brand ?? ''} ${model?.name ?? ''}`.toLowerCase().includes(query))
+    })
+  }, [assetSearch, assets, categoryFilter, models, statusFilter])
+  const selectedAssetRecord = assets.find((asset) => asset.id === selectedAssetId)
+  const categoryCounts = types.map((type) => ({ ...type, count: assets.filter((asset) => asset.typeId === type.id).length })).filter((item) => item.count > 0)
+
+  function userLabel(id: string) { const user = users.find((item) => item.id === id); return user ? `${user.employeeCode} · ${user.name}` : 'User unavailable' }
+  function assetHistory(asset: Asset) {
+    const receipt = receipts.find((item) => item.id === asset.receiptId)
+    const events: { id: string; at: string; title: string; detail: string }[] = [{ id: `registered-${asset.id}`, at: asset.createdAt, title: 'Asset registered', detail: `Created as ${asset.stockStatus} · purchase date ${asset.purchaseDate}` }]
+    if (receipt) events.push({ id: `receipt-${receipt.id}`, at: receipt.createdAt, title: `Purchased / received · ${receipt.grn}`, detail: `Invoice ${receipt.invoiceNumber} · ${vendors.find((item) => item.id === receipt.vendorId)?.name ?? 'Vendor unavailable'} · outcome ${receipt.outcome}` })
+    allocations.filter((item) => item.assetIds.includes(asset.id) || item.replacementAssetId === asset.id).forEach((item) => events.push({ id: `allocation-${item.id}`, at: item.itHeadApprovedAt || item.requestedAt, title: `${item.code} · ${item.replacementAssetId === asset.id ? 'Replaced / released' : item.allocationKind ?? 'Allocation'}`, detail: `${userLabel(item.userId)} · ${item.state}` }))
+    movements.filter((item) => item.assetId === asset.id).forEach((item) => events.push({ id: `movement-${item.id}`, at: item.itHeadApprovedAt || item.requestedAt, title: `${item.code} · ${item.kind}`, detail: item.kind === 'Transfer' ? `${userLabel(item.fromUserId)} → ${userLabel(item.toUserId)} · ${item.state}` : `${userLabel(item.fromUserId)} → ${item.disposition ?? 'Return processing'} · ${item.state}` }))
+    lifecycle.filter((item) => item.assetIds.includes(asset.id)).forEach((item) => events.push({ id: `lifecycle-${item.id}`, at: item.createdAt, title: `${item.code} · Employee ${item.kind}`, detail: `${userLabel(item.userId)} · ${item.state}${item.disposition ? ` · ${item.disposition}` : ''}` }))
+    return events.sort((a, b) => b.at.localeCompare(a.at))
+  }
 
   function nextCode(prefix: string, count: number) { return `${prefix}-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}` }
   function closeForm() { setFormOpen(false); setReceiptForm(newReceipt); setAssetForm(newAsset) }
@@ -103,9 +136,14 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
     {message && <div className="success-message" role="status">✓ {message}</div>}
     {mode === 'Goods receipt' ? <><div className="master-summary"><div><span>Total receipts</span><strong>{receipts.length}</strong></div><div><span>Accepted</span><strong>{receipts.filter((item) => item.outcome === 'Accepted').length}</strong></div><div><span>Exceptions</span><strong>{receipts.filter((item) => item.outcome !== 'Accepted').length}</strong></div></div><DataTable rows={receipts} rowKey={(item) => item.id} columns={[
       { key: 'grn', label: 'GRN', sticky: true, width: '170px', render: (item) => <strong>{item.grn}</strong> }, { key: 'model', label: 'Model', width: '230px', render: (item) => `${models.find((model) => model.id === item.modelId)?.brand ?? ''} ${models.find((model) => model.id === item.modelId)?.name ?? 'Unavailable'}` }, { key: 'vendor', label: 'Vendor', width: '220px', render: (item) => vendors.find((vendor) => vendor.id === item.vendorId)?.name ?? 'Unavailable' }, { key: 'po', label: 'Purchase order', width: '160px', render: (item) => item.purchaseOrder || 'Not recorded' }, { key: 'invoice', label: 'Invoice', width: '160px', render: (item) => item.invoiceNumber }, { key: 'quantity', label: 'Quantity', width: '90px', render: (item) => item.quantity }, { key: 'received', label: 'Received date', width: '130px', render: (item) => item.receivedDate }, { key: 'outcome', label: 'Outcome', width: '120px', render: (item) => <span className={`status ${item.outcome === 'Accepted' ? 'active' : 'inactive'}`}>{item.outcome}</span> },
-    ]} empty={<EmptyState text="No goods receipts recorded" />} /></> : <><div className="master-summary"><div><span>Registered assets</span><strong>{assets.length}</strong></div><div><span>In stock</span><strong>{assets.filter((item) => item.stockStatus === 'In stock').length}</strong></div><div><span>Inventory value</span><strong>₹{assets.reduce((sum, item) => sum + item.cost, 0).toLocaleString('en-IN')}</strong></div></div><DataTable rows={assets} rowKey={(item) => item.id} columns={[
-      { key: 'assetId', label: 'Asset ID', sticky: true, width: '180px', render: (item) => <strong>{item.assetId}</strong> }, { key: 'model', label: 'Brand / model', width: '240px', render: (item) => `${models.find((model) => model.id === item.modelId)?.brand ?? ''} ${models.find((model) => model.id === item.modelId)?.name ?? 'Unavailable'}` }, { key: 'serial', label: 'Serial number', width: '170px', render: (item) => item.serialNumber || 'Not applicable' }, { key: 'location', label: 'Location', width: '190px', render: (item) => locations.find((location) => location.id === item.locationId)?.name ?? 'Unavailable' }, { key: 'purchase', label: 'Purchase date', width: '130px', render: (item) => item.purchaseDate }, { key: 'cost', label: 'Cost', width: '130px', render: (item) => `₹${item.cost.toLocaleString('en-IN')}` }, { key: 'condition', label: 'Condition', width: '130px', render: (item) => item.condition }, { key: 'status', label: 'Lifecycle status', width: '190px', render: (item) => <span className={`status ${item.stockStatus === 'In stock' || item.stockStatus === 'Allocated' ? 'active' : 'inactive'}`}>{item.stockStatus}</span> },
-    ]} empty={<EmptyState text="No assets registered" />} /></>}
+    ]} empty={<EmptyState text="No goods receipts recorded" />} /></> : <><div className="master-summary"><div><span>Registered assets</span><strong>{assets.length}</strong></div><div><span>In stock</span><strong>{assets.filter((item) => item.stockStatus === 'In stock').length}</strong></div><div><span>Inventory value</span><strong>₹{assets.reduce((sum, item) => sum + item.cost, 0).toLocaleString('en-IN')}</strong></div></div>
+    <div className="category-overview"><button type="button" className={categoryFilter === 'all' ? 'selected' : ''} onClick={() => setCategoryFilter('all')}><span>All categories</span><strong>{assets.length}</strong></button>{categoryCounts.map((item) => <button type="button" className={categoryFilter === item.id ? 'selected' : ''} onClick={() => setCategoryFilter(item.id)} key={item.id}><span>{item.name}</span><strong>{item.count}</strong></button>)}</div>
+    <div className="asset-register-filters"><label>Search assets<input value={assetSearch} onChange={(event) => setAssetSearch(event.target.value)} placeholder="Asset ID, serial, brand or model" /></label><label>Category<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="all">All categories</option>{types.map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label><label>Lifecycle status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option>{assetStatuses.map((item) => <option key={item}>{item}</option>)}</select></label><button type="button" onClick={() => { setAssetSearch(''); setCategoryFilter('all'); setStatusFilter('all') }}>Clear filters</button></div>
+    <div className="filter-result">Showing <strong>{filteredAssets.length}</strong> of {assets.length} assets</div><DataTable rows={filteredAssets} rowKey={(item) => item.id} columns={[
+      { key: 'assetId', label: 'Asset ID', sticky: true, width: '190px', render: (item) => <button type="button" className="asset-link" onClick={() => setSelectedAssetId(item.id)}>{item.assetId}</button> }, { key: 'category', label: 'Category', width: '200px', render: (item) => types.find((type) => type.id === item.typeId)?.name ?? 'Unavailable' }, { key: 'model', label: 'Brand / model', width: '240px', render: (item) => `${models.find((model) => model.id === item.modelId)?.brand ?? ''} ${models.find((model) => model.id === item.modelId)?.name ?? 'Unavailable'}` }, { key: 'serial', label: 'Serial number', width: '170px', render: (item) => item.serialNumber || 'Not applicable' }, { key: 'location', label: 'Location', width: '190px', render: (item) => locations.find((location) => location.id === item.locationId)?.name ?? 'Unavailable' }, { key: 'purchase', label: 'Purchase date', width: '130px', render: (item) => item.purchaseDate }, { key: 'cost', label: 'Cost', width: '130px', render: (item) => `₹${item.cost.toLocaleString('en-IN')}` }, { key: 'condition', label: 'Condition', width: '130px', render: (item) => item.condition }, { key: 'status', label: 'Lifecycle status', width: '190px', render: (item) => <span className={`status ${item.stockStatus === 'In stock' || item.stockStatus === 'Allocated' ? 'active' : 'inactive'}`}>{item.stockStatus}</span> },
+    ]} empty={<EmptyState text="No assets match these filters" />} />
+    {selectedAssetRecord && <section className="asset-history-panel"><header><div><span className="eyebrow">COMPLETE ASSET LIFECYCLE</span><h3>{selectedAssetRecord.assetId} · {models.find((item) => item.id === selectedAssetRecord.modelId)?.brand} {models.find((item) => item.id === selectedAssetRecord.modelId)?.name}</h3><p>{types.find((item) => item.id === selectedAssetRecord.typeId)?.name} · Serial {selectedAssetRecord.serialNumber || 'Not applicable'} · Current status {selectedAssetRecord.stockStatus}</p></div><button type="button" onClick={() => setSelectedAssetId('')}>Close</button></header><div className="asset-history-meta"><span>Purchase: <b>{selectedAssetRecord.purchaseDate}</b></span><span>Cost: <b>₹{selectedAssetRecord.cost.toLocaleString('en-IN')}</b></span><span>Condition: <b>{selectedAssetRecord.condition}</b></span><span>Location: <b>{locations.find((item) => item.id === selectedAssetRecord.locationId)?.name ?? 'Unavailable'}</b></span></div><div className="asset-timeline">{assetHistory(selectedAssetRecord).map((event) => <article key={event.id}><i></i><div><strong>{event.title}</strong><span>{event.detail}</span><small>{event.at ? new Date(event.at).toLocaleString('en-IN') : 'Date unavailable'}</small></div></article>)}</div></section>}
+    </>}
   </section>
 }
 
