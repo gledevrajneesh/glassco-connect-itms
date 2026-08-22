@@ -20,37 +20,44 @@ const applications: PlatformApp[] = [
 export default function AppLauncher({ onOpen }: { onOpen: (appId: string) => void }) {
   const authorized = applications.filter((app) => app.state === 'authorized')
   const otherApps = applications.filter((app) => app.state !== 'authorized')
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
   return (
     <main className="launcher-main">
-      <section className="launcher-heading">
-        <div><span className="eyebrow">GLASSCO COMMUNICATION & COORDINATION PLATFORM</span><h1>Good afternoon</h1><p>Select an application to continue.</p></div>
-        <div className="identity-card"><span className="identity-avatar">DG</span><div><strong>Development User</strong><span>dev@glasscolabs.com</span></div></div>
+      <section className="launcher-hero">
+        <div className="launcher-hero-copy">
+          <span className="launcher-kicker">GLASSCO CONNECT</span>
+          <h1>{greeting}, Development User.</h1>
+          <p>Your secure workspace for communication, coordination and controlled business operations.</p>
+          <div className="launcher-trust-row"><span><Icon name="assurance" size={17}/> Company workspace</span><span><Icon name="check" size={17}/> Authorised access</span></div>
+        </div>
+        <div className="identity-card"><span className="identity-avatar">DG</span><div><small>Signed in as</small><strong>Development User</strong><span>dev@glasscolabs.com</span></div><span className="identity-status">ACTIVE</span></div>
       </section>
 
       <section className="authorized-section">
-        <div className="section-title"><div><h2>Your applications</h2><p>Applications currently assigned to your account.</p></div><span>{authorized.length} available</span></div>
+        <div className="section-title"><div><span className="section-kicker">YOUR WORKSPACE</span><h2>Available applications</h2><p>Open an application assigned to your account.</p></div><span>{authorized.length} available</span></div>
         <div className="authorized-grid">
           {authorized.map((app) => <button className="authorized-app" type="button" key={app.id} onClick={() => onOpen(app.id)}>
             <span className="app-monogram"><Icon name={app.icon} size={29}/></span>
-            <span className="app-copy"><strong>{app.name}</strong><small>{app.description}</small></span>
-            <span className="open-arrow"><Icon name="arrow" size={24}/></span>
+            <span className="app-copy"><small className="app-code">{app.shortName}</small><strong>{app.name}</strong><small>{app.description}</small></span>
+            <span className="open-app-label">Open application <Icon name="arrow" size={20}/></span>
           </button>)}
         </div>
       </section>
 
       <section className="other-section">
-        <div className="section-title"><div><h2>Other Glassco applications</h2><p>These applications are not currently available to this account.</p></div></div>
+        <div className="section-title"><div><span className="section-kicker">PLATFORM ROADMAP</span><h2>More from Glassco Connect</h2><p>One governed platform, expanding around the way Glassco works.</p></div></div>
         <div className="other-list">
           {otherApps.map((app) => <article className="other-app" key={app.id}>
             <span className="other-monogram"><Icon name={app.icon} size={22}/></span>
-            <span className="other-copy"><strong>{app.name}</strong><small>{app.description}</small></span>
-            <span className={`access-state ${app.state}`}>{app.state === 'no-access' ? 'NO ACCESS' : 'PLANNED'}</span>
+            <span className="other-copy"><small>{app.shortName}</small><strong>{app.name}</strong><span>{app.description}</span></span>
+            <span className={`access-state ${app.state}`}>{app.state === 'no-access' ? 'Access not assigned' : 'Planned'}</span>
           </article>)}
         </div>
       </section>
 
-      <p className="access-footnote">Application access is assigned centrally. Module permissions are evaluated after an application opens.</p>
+      <footer className="launcher-footer"><span><Icon name="assurance" size={16}/> Controlled company platform</span><span>Application access is centrally governed.</span></footer>
     </main>
   )
 }
