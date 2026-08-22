@@ -1,0 +1,29 @@
+/* Universal formal typography: hierarchy through size, spacing and colour rather than heavy weight. */
+body{font-weight:400;letter-spacing:-.005em}
+h1,h2,h3,h4,h5,h6{font-weight:600;letter-spacing:-.018em}
+strong,b{font-weight:600}
+button,a,input,select,textarea{font-weight:400}
+.brand strong{font-weight:650;letter-spacing:-.012em}
+.sidebar nav button{font-size:15px;font-weight:450;letter-spacing:-.008em}
+.sidebar nav button.active{font-weight:500}
+.sidebar-label{font-weight:500;letter-spacing:.1em}
+.sidebar-footer strong{font-weight:600}
+.page-heading h1{font-size:29px;font-weight:600;line-height:1.2}
+.page-heading p{font-size:15px;line-height:1.55}
+.eyebrow{font-weight:600;letter-spacing:.065em}
+.environment,.phase,.planned{font-weight:600}
+.operation-heading h2,.panel-heading h2,.section-title h2{font-weight:600}
+.master-tabs button.selected,.workspace-tabs button.selected{font-weight:550}
+.primary-action,.secondary-action,.all-apps,.table-action{font-weight:500}
+.status,.custody-state,.access-state{font-weight:550}
+.master-summary strong,.status-grid strong{font-weight:600}
+.data-table th{font-weight:600;letter-spacing:.005em}
+.data-table td strong{font-weight:550}
+.master-form label,.filter-row label,.ledger-controls label,.asset-register-filters label{font-weight:550}
+.command-card strong{font-size:23px;font-weight:600;letter-spacing:-.02em}
+.command-card small{font-weight:400}
+.priority-panel strong,.activity-panel strong{font-weight:550}
+.priority-panel b{font-weight:600}
+.dashboard-footer strong{font-weight:600}
+.record strong,.allocation-card strong,.ledger-card strong{font-weight:550}
+@media(max-width:520px){.page-heading h1{font-size:24px}}

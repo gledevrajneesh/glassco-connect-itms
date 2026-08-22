@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import './App.css'
+import './FormalTheme.css'
 import SharedMasters from './features/masters/SharedMasters'
 import AppLauncher from './features/platform/AppLauncher'
 import InventoryWorkspace from './features/inventory/InventoryWorkspace'
