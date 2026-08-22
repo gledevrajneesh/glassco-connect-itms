@@ -1,6 +1,10 @@
 # GCCP-ITMS-BUILD-20 — Production Function Completion
 
-Status: implemented and locally verified on 22 August 2026.
+Status: implemented, locally verified and user-acceptance tested on 22 August 2026.
+
+## UAT closure
+
+The project lead accepted the BUILD-20 localhost implementation on 22 August 2026. The accepted scope includes global search, consolidated approvals, warranty/RMA controls, physical-verification access, governed acknowledgements, controlled exports, dashboard drill-down context, notification rules/history, bulk-import regression coverage and the data-quality dashboard.
 
 ## Delivered controls
 
