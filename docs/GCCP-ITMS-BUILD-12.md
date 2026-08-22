@@ -6,6 +6,7 @@
 - Automatic maintenance reference codes and accountable responsible person.
 - Optional approved vendor, frequency, due date and work instructions.
 - Due-list views for overdue, next 7 days and next 30 days.
+- Item Group / Asset Category is the first asset-selection criterion in maintenance, due-calendar, allocation, asset-register, QR-label and user-profile asset-event workflows.
 - Controlled completion with performed date, technician, outcome, cost and findings.
 - Optional next-due date automatically creates the follow-on schedule.
 - Explicit lifecycle disposition can retain the current state or move an asset to in stock, under repair, quarantine or scrap.
