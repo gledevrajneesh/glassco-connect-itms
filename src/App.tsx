@@ -11,12 +11,13 @@ import CommandDashboard from './features/dashboard/CommandDashboard'
 import NotificationCenter from './features/notifications/NotificationCenter'
 import RetirementWorkspace from './features/retirement/RetirementWorkspace'
 import AccessGovernance from './features/access/AccessGovernanceV2'
+import OperationsCentre from './features/operations/OperationsCentre'
 import Icon, { type IconName } from './components/Icon'
 import { canOpen, roleById, roles, type ModuleName, type RoleId } from './lib/accessControl'
 import { useLocalStore } from './lib/localStore'
 
-const navItems:ModuleName[] = ['Dashboard', 'Shared Masters', 'Asset Inventory', 'Allocation & Custody', 'Maintenance & Inspection', 'Assurance & Controls', 'Asset Retirement & Circularity', 'Reports & Analytics','Access & Roles']
-const iconByModule:Record<ModuleName,IconName> = {Dashboard:'dashboard','Shared Masters':'masters','Asset Inventory':'inventory','Allocation & Custody':'allocation','Maintenance & Inspection':'maintenance','Assurance & Controls':'assurance','Asset Retirement & Circularity':'history','Reports & Analytics':'reports','Access & Roles':'assurance'}
+const navItems:ModuleName[] = ['Dashboard','Operations Centre', 'Shared Masters', 'Asset Inventory', 'Allocation & Custody', 'Maintenance & Inspection', 'Assurance & Controls', 'Asset Retirement & Circularity', 'Reports & Analytics','Access & Roles']
+const iconByModule:Record<ModuleName,IconName> = {Dashboard:'dashboard','Operations Centre':'support','Shared Masters':'masters','Asset Inventory':'inventory','Allocation & Custody':'allocation','Maintenance & Inspection':'maintenance','Assurance & Controls':'assurance','Asset Retirement & Circularity':'history','Reports & Analytics':'reports','Access & Roles':'assurance'}
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -24,7 +25,7 @@ function App() {
   const [activeApp, setActiveApp] = useState<string | null>(null)
   const [activeRole,setActiveRole]=useLocalStore<RoleId>('itms.active-role.v1','administrator')
   const permittedItems=navItems.filter(item=>canOpen(activeRole,item))
-  function navigate(target:string){const module=target as ModuleName;if(canOpen(activeRole,module)){setSection(module);setMenuOpen(false)}}
+  function navigate(target:string,focus?:string){const module=target as ModuleName;if(canOpen(activeRole,module)){if(focus)localStorage.setItem('itms.navigation-focus.v1',JSON.stringify({module,focus,at:new Date().toISOString()}));setSection(module);setMenuOpen(false)}}
   function switchRole(role:RoleId){setActiveRole(role);if(!canOpen(role,section as ModuleName))setSection('Dashboard')}
 
   return (
@@ -56,7 +57,7 @@ function App() {
         {menuOpen && <button type="button" className="backdrop" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
 
         <main className={`role-${activeRole} section-${section.toLowerCase().replaceAll(/[^a-z0-9]+/g,'-')}`}>
-          {!canOpen(activeRole,section as ModuleName)?<section className="access-denied"><Icon name="assurance" size={42}/><h1>ITMS access not assigned</h1><p>{roleById(activeRole).name} has no operational access to this module. Ask an Administrator to amend the controlled access register.</p><button type="button" onClick={()=>setActiveApp(null)}>Return to All applications</button></section>:section === 'Shared Masters' ? <SharedMasters />
+          {!canOpen(activeRole,section as ModuleName)?<section className="access-denied"><Icon name="assurance" size={42}/><h1>ITMS access not assigned</h1><p>{roleById(activeRole).name} has no operational access to this module. Ask an Administrator to amend the controlled access register.</p><button type="button" onClick={()=>setActiveApp(null)}>Return to All applications</button></section>:section === 'Operations Centre'?<OperationsCentre onNavigate={navigate}/>:section === 'Shared Masters' ? <SharedMasters />
             : section === 'Asset Inventory' ? <InventoryWorkspace />
             : section === 'Allocation & Custody' ? <AllocationCustody />
             : section === 'Maintenance & Inspection' ? <MaintenanceWorkspace />

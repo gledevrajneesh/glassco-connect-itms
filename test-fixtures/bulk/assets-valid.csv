@@ -1,0 +1,3 @@
+asset_id,asset_type_code,model_code,serial_number,location_code,configuration_code,purchase_date,cost,condition,stock_status
+GL-IT-2601,LAPTOP,LAT-5440,GL26LAT0001,AMB-HO,,2026-08-01,78500,New,In stock
+GL-IT-2602,MONITOR,P2422H,GL26MON0001,AMB-HO,,2026-08-02,14500,New,In stock

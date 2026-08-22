@@ -1,0 +1,3 @@
+asset_id,asset_type_code,model_code,serial_number,location_code,configuration_code,purchase_date,cost,condition,stock_status
+GL-IT-2603,LAPTOP,LAT-5440,DUPLICATE-SERIAL,AMB-HO,,2026-08-03,not-a-number,New,In stock
+GL-IT-2604,LAPTOP,LAT-5440,DUPLICATE-SERIAL,UNKNOWN,,2026-08-03,72000,New,In stock

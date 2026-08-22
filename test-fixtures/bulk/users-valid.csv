@@ -1,0 +1,3 @@
+employee_code,name,email,phone,department_code,location_code,user_group_code,status
+EMP-2601,Ananya Mehta,ananya.mehta@glasscolabs.com,9876501001,IT,AMB-HO,EMP,Active
+EMP-2602,Vivek Sharma,vivek.sharma@glasscolabs.com,9876501002,QA,AMB-HO,EMP,Active
