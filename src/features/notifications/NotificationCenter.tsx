@@ -3,6 +3,7 @@ import { useLocalStore } from '../../lib/localStore'
 import Icon from '../../components/Icon'
 import type { MaintenanceRecord } from '../maintenance/MaintenanceWorkspace'
 import type { DisposalRecord } from '../assurance/AssuranceWorkspace'
+import type { RetirementRecord } from '../retirement/RetirementWorkspace'
 import './NotificationCenter.css'
 
 type Allocation={id:string;code:string;state:string;requestedAt:string}
@@ -19,17 +20,18 @@ const addMonths=(date:string,months:number)=>{const value=new Date(`${date}T00:0
 
 export default function NotificationCenter({onNavigate}:{onNavigate:(module:string)=>void}){
   const [open,setOpen]=useState(false);const [historyOpen,setHistoryOpen]=useState(false);const [readIds,setReadIds]=useLocalStore<string[]>('itms.notification-read.v1',[]);const [deliveries,setDeliveries]=useLocalStore<Delivery[]>('itms.notification-deliveries.v1',[])
-  const [allocations]=useLocalStore<Allocation[]>('itms.allocations.v1',[]);const [maintenance]=useLocalStore<MaintenanceRecord[]>('itms.asset-maintenance.v1',[]);const [disposals]=useLocalStore<DisposalRecord[]>('itms.asset-disposals.v1',[]);const [lifecycle]=useLocalStore<Lifecycle[]>('itms.employee-lifecycle.v1',[]);const [incidents]=useLocalStore<Incident[]>('itms.asset-incidents.v1',[]);const [assets]=useLocalStore<Asset[]>('itms.assets.v1',[]);const [models]=useLocalStore<Model[]>('itms.asset-models.v1',[])
+  const [allocations]=useLocalStore<Allocation[]>('itms.allocations.v1',[]);const [maintenance]=useLocalStore<MaintenanceRecord[]>('itms.asset-maintenance.v1',[]);const [disposals]=useLocalStore<DisposalRecord[]>('itms.asset-disposals.v1',[]);const [retirements]=useLocalStore<RetirementRecord[]>('itms.asset-retirements.v1',[]);const [lifecycle]=useLocalStore<Lifecycle[]>('itms.employee-lifecycle.v1',[]);const [incidents]=useLocalStore<Incident[]>('itms.asset-incidents.v1',[]);const [assets]=useLocalStore<Asset[]>('itms.assets.v1',[]);const [models]=useLocalStore<Model[]>('itms.asset-models.v1',[])
   const notices=useMemo<Notice[]>(()=>{
     const rows:Notice[]=[]
     allocations.filter((item)=>item.state.startsWith('Pending')).forEach((item)=>rows.push({id:`allocation-${item.id}-${item.state}`,title:`${item.code} requires approval`,detail:item.state,date:item.requestedAt,severity:'Attention',module:'Allocation & Custody',emailSubject:`ITMS approval required: ${item.code}`}))
     maintenance.filter((item)=>item.state==='Scheduled'&&item.dueDate<=addDays(CURRENT_DATE,30)).forEach((item)=>rows.push({id:`maintenance-${item.id}-${item.dueDate}`,title:`${item.code} ${item.dueDate<CURRENT_DATE?'is overdue':'is due soon'}`,detail:`${item.activity} · due ${item.dueDate}`,date:`${item.dueDate}T00:00:00`,severity:item.dueDate<CURRENT_DATE?'Urgent':'Attention',module:'Maintenance & Inspection',emailSubject:`ITMS maintenance ${item.dueDate<CURRENT_DATE?'overdue':'due'}: ${item.code}`}))
     disposals.filter((item)=>item.state.startsWith('Pending')).forEach((item)=>rows.push({id:`disposal-${item.id}-${item.state}`,title:`${item.code} requires disposal approval`,detail:item.state,date:item.managerAt||item.requestedAt,severity:'Attention',module:'Assurance & Controls',emailSubject:`ITMS disposal approval required: ${item.code}`}))
+    retirements.filter((item)=>!['Completed','Cancelled'].includes(item.state)).forEach((item)=>rows.push({id:`retirement-${item.id}-${item.state}`,title:`${item.code} requires retirement action`,detail:`${item.route} · ${item.assetIds?.length||Number(Boolean(item.assetId))} assets · ${item.state}`,date:item.headAt||item.managerAt||item.requestedAt,severity:item.state==='Approved - awaiting handover'?'Urgent':'Attention',module:'Asset Retirement & Circularity',emailSubject:`ITMS retirement action required: ${item.code}`}))
     lifecycle.filter((item)=>item.state!=='Completed').forEach((item)=>rows.push({id:`lifecycle-${item.id}-${item.state}`,title:`${item.code} awaiting sign-off`,detail:`${item.kind} · ${item.state}`,date:item.createdAt,severity:'Attention',module:'Allocation & Custody',emailSubject:`ITMS ${item.kind} sign-off: ${item.code}`}))
     incidents.filter((item)=>item.status==='Open').forEach((item)=>rows.push({id:`incident-${item.id}`,title:`${item.code} remains open`,detail:`Asset event · ${item.type}`,date:item.reportedAt,severity:['Lost','Stolen'].includes(item.type)?'Urgent':'Attention',module:'Shared Masters',emailSubject:`ITMS open asset event: ${item.code}`}))
     assets.forEach((asset)=>{const model=models.find((item)=>item.id===asset.modelId);const months=Number(model?.warrantyMonths||0);if(!months)return;const expiry=addMonths(asset.purchaseDate,months);if(expiry>=CURRENT_DATE&&expiry<=addDays(CURRENT_DATE,90))rows.push({id:`warranty-${asset.id}-${expiry}`,title:`${asset.assetId} warranty expires soon`,detail:`${model?.brand} ${model?.name} · ${expiry}`,date:`${expiry}T00:00:00`,severity:'Information',module:'Asset Inventory',emailSubject:`ITMS warranty expiry: ${asset.assetId}`})})
     return rows.sort((a,b)=>b.date.localeCompare(a.date))
-  },[allocations,assets,disposals,incidents,lifecycle,maintenance,models])
+  },[allocations,assets,disposals,incidents,lifecycle,maintenance,models,retirements])
   const unread=notices.filter((item)=>!readIds.includes(item.id)).length
   function markRead(id:string){setReadIds((current)=>current.includes(id)?current:[...current,id])}
   function visit(notice:Notice){markRead(notice.id);setOpen(false);onNavigate(notice.module)}
