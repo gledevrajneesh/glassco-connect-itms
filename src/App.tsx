@@ -32,7 +32,7 @@ function App() {
             setMenuOpen(false)
           }}/>
         )}
-        {activeApp && <button type="button" className="all-apps" onClick={() => { setActiveApp(null); setMenuOpen(false) }}>All applications</button>}
+        {activeApp && <button type="button" className="all-apps" onClick={() => { setActiveApp(null); setMenuOpen(false) }}><Icon name="dashboard" size={18}/>All applications</button>}
         <span className="environment">LOCALHOST</span>
         <span className="user">dev@glasscolabs.com</span>
       </header>
