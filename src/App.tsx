@@ -20,7 +20,7 @@ import { useLocalStore } from './lib/localStore'
 const navItems:ModuleName[] = ['Dashboard','Operations Centre', 'Shared Masters', 'Asset Inventory', 'Allocation & Custody', 'Maintenance & Inspection', 'Assurance & Controls', 'Asset Retirement & Circularity', 'Reports & Analytics','Access & Roles']
 const iconByModule:Record<ModuleName,IconName> = {Dashboard:'dashboard','Operations Centre':'support','Shared Masters':'masters','Asset Inventory':'inventory','Allocation & Custody':'allocation','Maintenance & Inspection':'maintenance','Assurance & Controls':'assurance','Asset Retirement & Circularity':'history','Reports & Analytics':'reports','Access & Roles':'assurance'}
 
-function App() {
+function App({identityEmail,logout}:{identityEmail:string;logout:(()=>Promise<void>)|null}) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [section, setSection] = useState('Dashboard')
   const [activeApp, setActiveApp] = useState<string | null>(null)
@@ -44,7 +44,8 @@ function App() {
         {activeApp && <button type="button" className="all-apps" onClick={() => { setActiveApp(null); setMenuOpen(false) }}><Icon name="dashboard" size={18}/>All applications</button>}
         <span className="environment">LOCALHOST</span>
         {activeApp&&<label className="role-simulator">Testing as<select value={activeRole} onChange={event=>switchRole(event.target.value as RoleId)}>{roles.map(role=><option value={role.id} key={role.id}>{role.name}</option>)}</select></label>}
-        <span className="user">dev@glasscolabs.com · {roleById(activeRole).name}</span>
+        <span className="user">{identityEmail} · {roleById(activeRole).name}</span>
+        {logout&&<button type="button" className="all-apps" onClick={()=>void logout()}>Sign out</button>}
       </header>
 
       {!activeApp ? <AppLauncher onOpen={setActiveApp} /> : <div className="body-layout">
