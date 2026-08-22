@@ -22,7 +22,7 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        {activeApp && <button className="menu-button" type="button" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>☰</button>}
+        {activeApp && <button className="menu-button" type="button" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><Icon name="menu" size={23}/></button>}
         <div className="brand-mark" aria-hidden="true"><i /><i /><i /><i /></div>
         <div className="brand"><strong>GLASSCO</strong><span>{activeApp ? 'CONNECT · ITMS' : 'CONNECT'}</span></div>
         <div className="topbar-spacer" />
