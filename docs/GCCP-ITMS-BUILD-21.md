@@ -53,13 +53,13 @@ Status: architecture gate approved; Firebase project connection pending.
 
 ## Connection checklist
 
-- [ ] Company-owned Firebase project created by `dev@glasscolabs.com`
-- [ ] Spark plan visibly confirmed
-- [ ] Web app registered
+- [x] Company-owned Firebase project created by `dev@glasscolabs.com`
+- [x] Spark plan visibly confirmed
+- [x] Web app registered
 - [ ] Email/Password provider enabled
 - [ ] Default Firestore database created in the agreed region
-- [ ] Project ID and public Web app configuration copied to local `.env.local`
-- [ ] Firebase SDK installed and environment validation added
+- [x] Project ID and public Web app configuration copied to local `.env.local`
+- [x] Firebase SDK installed and environment validation added
 - [ ] Authentication gate implemented
 - [ ] Firestore adapter, rules and indexes implemented
 - [ ] Local export imported into development Firestore and reconciled
