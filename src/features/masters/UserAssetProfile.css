@@ -1,0 +1,7 @@
+.user-profile-header{display:flex;justify-content:space-between;gap:20px;padding:20px;border-bottom:1px solid var(--line)}
+.user-profile-header h2{margin:5px 0}
+.user-profile-header p,.user-profile-header small{display:block;margin:0 0 4px;color:var(--muted)}
+.user-profile-header>div:last-child{display:flex;align-items:flex-start;gap:8px}
+.profile-section{border-top:3px solid #e4e9f0}
+.profile-section h3{margin:0;padding:14px 18px;border-bottom:1px solid var(--line);font-size:16px}
+@media(max-width:700px){.user-profile-header{flex-direction:column}.user-profile-header>div:last-child{flex-wrap:wrap}}

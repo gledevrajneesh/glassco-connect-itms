@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useLocalStore } from '../../lib/localStore'
 import DataTable from '../../components/DataTable'
 import { changedFields, useMasterAudit } from '../../lib/masterAudit'
+import UserAssetProfile from './UserAssetProfile'
 
 type Status = 'Active' | 'Inactive'
 type MasterType = 'Departments' | 'Locations' | 'User groups' | 'Users'
@@ -40,6 +41,7 @@ export default function SharedMasters() {
   const [message, setMessage] = useState('')
   const [editingId, setEditingId] = useState('')
   const [showHistory, setShowHistory] = useState(false)
+  const [profileUserId, setProfileUserId] = useState('')
   const audit = useMasterAudit()
 
   const currentBasic = activeTab === 'Departments' ? departments : activeTab === 'Locations' ? locations : groups
@@ -108,6 +110,8 @@ export default function SharedMasters() {
 
   const total = activeTab === 'Users' ? filteredUsers.length : currentBasic.length
   const active = activeTab === 'Users' ? filteredUsers.filter((record) => record.status === 'Active').length : currentBasic.filter((record) => record.status === 'Active').length
+  const profileUser = users.find((record) => record.id === profileUserId)
+  if (profileUser) return <UserAssetProfile user={profileUser} onClose={() => setProfileUserId('')} />
 
   return (
     <>
@@ -156,7 +160,7 @@ export default function SharedMasters() {
           { key: 'status', label: 'Status', width: '120px', render: (record) => <span className={`status ${record.status.toLowerCase()}`}>{record.status}</span> },
           { key: 'actions', label: 'Actions', width: '210px', render: (record) => <div className="table-actions"><button className="table-action" type="button" onClick={() => editBasic(record)}>Edit</button><button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button></div> },
         ]} empty={<div className="empty-state"><span>◫</span><strong>No {activeTab.toLowerCase()} recorded</strong><p>Add the first governed record to begin building the organisation master.</p></div>} /> : <DataTable rows={filteredUsers} rowKey={(record) => record.id} columns={[
-          { key: 'employee', label: 'Employee', sticky: true, width: '220px', render: (record) => <><strong>{record.employeeCode}</strong><small>{record.name}</small></> },
+          { key: 'employee', label: 'Employee', sticky: true, width: '220px', render: (record) => <button type="button" className="asset-link" onClick={() => setProfileUserId(record.id)}><strong>{record.employeeCode}</strong><small>{record.name}</small></button> },
           { key: 'department', label: 'Department', width: '190px', render: (record) => departments.find((item) => item.id === record.departmentId)?.name ?? 'Unavailable' },
           { key: 'location', label: 'Location', width: '180px', render: (record) => locations.find((item) => item.id === record.locationId)?.name ?? 'Unavailable' },
           { key: 'group', label: 'User group', width: '170px', render: (record) => groups.find((item) => item.id === record.groupId)?.name ?? 'Unavailable' },
