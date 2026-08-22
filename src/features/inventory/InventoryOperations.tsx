@@ -3,6 +3,7 @@ import { useLocalStore } from '../../lib/localStore'
 import DataTable from '../../components/DataTable'
 import Icon from '../../components/Icon'
 import type { CustodyMovement } from '../../lib/custodyLifecycle'
+import type { MaintenanceRecord } from '../maintenance/MaintenanceWorkspace'
 
 type Status = 'Active' | 'Inactive'
 type Vendor = { id: string; code: string; name: string; status: Status }
@@ -44,6 +45,7 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
   const [movements] = useLocalStore<CustodyMovement[]>('itms.custody-movements.v1', [])
   const [lifecycle] = useLocalStore<Lifecycle[]>('itms.employee-lifecycle.v1', [])
   const [users] = useLocalStore<User[]>('itms.users.v1', [])
+  const [maintenance] = useLocalStore<MaintenanceRecord[]>('itms.asset-maintenance.v1', [])
   const [receiptForm, setReceiptForm] = useState(newReceipt)
   const [assetForm, setAssetForm] = useState(newAsset)
 
@@ -81,6 +83,7 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
     allocations.filter((item) => item.assetIds.includes(asset.id) || item.replacementAssetId === asset.id).forEach((item) => events.push({ id: `allocation-${item.id}`, at: item.itHeadApprovedAt || item.requestedAt, title: `${item.code} · ${item.replacementAssetId === asset.id ? 'Replaced / released' : item.allocationKind ?? 'Allocation'}`, detail: `${userLabel(item.userId)} · ${item.state}` }))
     movements.filter((item) => item.assetId === asset.id).forEach((item) => events.push({ id: `movement-${item.id}`, at: item.itHeadApprovedAt || item.requestedAt, title: `${item.code} · ${item.kind}`, detail: item.kind === 'Transfer' ? `${userLabel(item.fromUserId)} → ${userLabel(item.toUserId)} · ${item.state}` : `${userLabel(item.fromUserId)} → ${item.disposition ?? 'Return processing'} · ${item.state}` }))
     lifecycle.filter((item) => item.assetIds.includes(asset.id)).forEach((item) => events.push({ id: `lifecycle-${item.id}`, at: item.createdAt, title: `${item.code} · Employee ${item.kind}`, detail: `${userLabel(item.userId)} · ${item.state}${item.disposition ? ` · ${item.disposition}` : ''}` }))
+    maintenance.filter((item) => item.assetId === asset.id).forEach((item) => events.push({ id: `maintenance-${item.id}`, at: item.completedAt || item.createdAt, title: `${item.code} · ${item.activity}`, detail: item.state === 'Completed' ? `${item.outcome} · ${item.findings} · ₹${item.cost.toLocaleString('en-IN')}${item.nextDueDate ? ` · next due ${item.nextDueDate}` : ''}` : `${item.state} · due ${item.dueDate} · ${item.responsible}` }))
     return events.sort((a, b) => b.at.localeCompare(a.at))
   }
 

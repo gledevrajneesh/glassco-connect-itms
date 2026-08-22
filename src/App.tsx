@@ -4,6 +4,7 @@ import SharedMasters from './features/masters/SharedMasters'
 import AppLauncher from './features/platform/AppLauncher'
 import InventoryWorkspace from './features/inventory/InventoryWorkspace'
 import AllocationCustody from './features/custody/AllocationCustody'
+import MaintenanceWorkspace from './features/maintenance/MaintenanceWorkspace'
 import Icon, { type IconName } from './components/Icon'
 
 const modules = [
@@ -41,7 +42,7 @@ function App() {
         {menuOpen && <button type="button" className="backdrop" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
 
         <main>
-          {section === 'Shared Masters' ? <SharedMasters /> : section === 'Asset Inventory' ? <InventoryWorkspace /> : section === 'Allocation & Custody' ? <AllocationCustody /> : <>
+          {section === 'Shared Masters' ? <SharedMasters /> : section === 'Asset Inventory' ? <InventoryWorkspace /> : section === 'Allocation & Custody' ? <AllocationCustody /> : section === 'Maintenance & Inspection' ? <MaintenanceWorkspace /> : <>
           <section className="page-heading">
             <div><span className="eyebrow">GCCP-ITMS-FOUNDATION-01</span><h1>IT Asset Lifecycle Dashboard</h1><p>One governed source for IT inventory, custody, maintenance and assurance.</p></div>
             <span className="phase">PHASE 1 · LOCALHOST</span>
