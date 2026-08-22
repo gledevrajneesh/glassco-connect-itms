@@ -1,10 +1,26 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth'
+import { GoogleAuthProvider, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut, type User } from 'firebase/auth'
 import { firebaseAuth, isFirebaseEnabled } from '../../lib/firebase'
 import './AuthGate.css'
 
 type AuthGateProps = {
   children: (identityEmail: string, logout: (() => Promise<void>) | null) => ReactNode
+}
+
+type LocalAccessRecord = { email?: string; status?: string }
+const bootstrapAdministrators = ['dev@glasscolabs.com']
+
+function hasActiveItmsAccess(email: string) {
+  const normalized = email.trim().toLowerCase()
+  try {
+    const stored = localStorage.getItem('itms.access-assignments.v1')
+    if (stored) return (JSON.parse(stored) as LocalAccessRecord[]).some((record) => record.email?.toLowerCase() === normalized && record.status === 'Active')
+  } catch { /* Fall through to the controlled bootstrap account. */ }
+  return bootstrapAdministrators.includes(normalized)
+}
+
+function isGlasscoWorkspaceAccount(email: string) {
+  return email.trim().toLowerCase().endsWith('@glasscolabs.com')
 }
 
 export default function AuthGate({ children }: AuthGateProps) {
@@ -17,9 +33,15 @@ export default function AuthGate({ children }: AuthGateProps) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!firebaseAuth) return
-    return onAuthStateChanged(firebaseAuth, (nextUser) => {
-      setUser(nextUser)
+    const configuredAuth = firebaseAuth
+    if (!configuredAuth) return
+    return onAuthStateChanged(configuredAuth, async (nextUser) => {
+      const authenticatedEmail = nextUser?.email || ''
+      if (nextUser && (!isGlasscoWorkspaceAccount(authenticatedEmail) || !hasActiveItmsAccess(authenticatedEmail))) {
+        await signOut(configuredAuth)
+        setError('Your Google account is valid, but active ITMS access has not been assigned by an administrator.')
+        setUser(null)
+      } else setUser(nextUser)
       setChecking(false)
     })
   }, [])
@@ -50,10 +72,23 @@ export default function AuthGate({ children }: AuthGateProps) {
     } finally { setBusy(false) }
   }
 
+  async function googleSignIn() {
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const provider = new GoogleAuthProvider()
+      provider.setCustomParameters({ hd: 'glasscolabs.com', prompt: 'select_account' })
+      await signInWithPopup(activeAuth, provider)
+    } catch {
+      setError('Google Workspace sign-in did not complete. Select an authorised @glasscolabs.com account and try again.')
+    } finally { setBusy(false) }
+  }
+
   return <main className="auth-page">
     <section className="auth-card">
       <div className="auth-brand"><span className="auth-bars"><i/><i/><i/><i/></span><div><strong>GLASSCO</strong><span>CONNECT · ITMS</span></div></div>
       <div className="auth-copy"><span>SECURE COMPANY ACCESS</span><h1>Sign in to ITMS</h1><p>Use your authorised Glassco business account to continue.</p></div>
+      <div className="auth-sso"><button type="button" className="google-signin" disabled={busy} onClick={googleSignIn}><span>G</span>Continue with Google Workspace</button><p>Only active users listed in ITMS Access &amp; Roles are admitted.</p></div>
+      <div className="auth-divider"><span>or use email and password</span></div>
       <form onSubmit={login}>
         <label>Company email<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
         <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
