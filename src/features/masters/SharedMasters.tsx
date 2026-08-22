@@ -3,6 +3,7 @@ import { useLocalStore } from '../../lib/localStore'
 import DataTable from '../../components/DataTable'
 import { changedFields, useMasterAudit } from '../../lib/masterAudit'
 import UserAssetProfile from './UserAssetProfile'
+import BulkDataCentre from './BulkDataCentre'
 
 type Status = 'Active' | 'Inactive'
 type MasterType = 'Departments' | 'Locations' | 'User groups' | 'Users'
@@ -42,6 +43,7 @@ export default function SharedMasters() {
   const [editingId, setEditingId] = useState('')
   const [showHistory, setShowHistory] = useState(false)
   const [profileUserId, setProfileUserId] = useState('')
+  const [bulkOpen, setBulkOpen] = useState(false)
   const audit = useMasterAudit()
 
   const currentBasic = activeTab === 'Departments' ? departments : activeTab === 'Locations' ? locations : groups
@@ -112,6 +114,7 @@ export default function SharedMasters() {
   const active = activeTab === 'Users' ? filteredUsers.filter((record) => record.status === 'Active').length : currentBasic.filter((record) => record.status === 'Active').length
   const profileUser = users.find((record) => record.id === profileUserId)
   if (profileUser) return <UserAssetProfile user={profileUser} onClose={() => setProfileUserId('')} />
+  if (bulkOpen) return <BulkDataCentre onClose={() => setBulkOpen(false)} />
 
   return (
     <>
@@ -125,7 +128,7 @@ export default function SharedMasters() {
           <div className="master-tabs" role="tablist" aria-label="Master type">
             {tabs.map((tab) => <button type="button" role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? 'selected' : ''} key={tab} onClick={() => { setActiveTab(tab); setMessage(''); closeForm() }}>{tab}</button>)}
           </div>
-          <div className="toolbar-actions"><button type="button" className="secondary-action" onClick={() => { setShowHistory(!showHistory); closeForm() }}>Edit history</button><button type="button" className="primary-action" onClick={() => { setShowHistory(false); setFormOpen(!formOpen) }}>＋ Add {activeTab === 'Users' ? 'user' : activeTab.slice(0, -1).toLowerCase()}</button></div>
+          <div className="toolbar-actions"><button type="button" className="secondary-action" onClick={() => setBulkOpen(true)}>Bulk data</button><button type="button" className="secondary-action" onClick={() => { setShowHistory(!showHistory); closeForm() }}>Edit history</button><button type="button" className="primary-action" onClick={() => { setShowHistory(false); setFormOpen(!formOpen) }}>＋ Add {activeTab === 'Users' ? 'user' : activeTab.slice(0, -1).toLowerCase()}</button></div>
         </div>
 
         {formOpen && activeTab !== 'Users' && <form className="master-form" onSubmit={saveBasic}>
