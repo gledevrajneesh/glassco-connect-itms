@@ -8,6 +8,7 @@ import MaintenanceWorkspace from './features/maintenance/MaintenanceWorkspace'
 import AssuranceWorkspace from './features/assurance/AssuranceWorkspace'
 import ReportsWorkspace from './features/reports/ReportsWorkspace'
 import CommandDashboard from './features/dashboard/CommandDashboard'
+import NotificationCenter from './features/notifications/NotificationCenter'
 import Icon, { type IconName } from './components/Icon'
 
 const navItems = ['Dashboard', 'Shared Masters', 'Asset Inventory', 'Allocation & Custody', 'Maintenance & Inspection', 'Assurance & Controls', 'Reports & Analytics']
@@ -25,6 +26,12 @@ function App() {
         <div className="brand-mark" aria-hidden="true"><i /><i /><i /><i /></div>
         <div className="brand"><strong>GLASSCO</strong><span>{activeApp ? 'CONNECT · ITMS' : 'CONNECT'}</span></div>
         <div className="topbar-spacer" />
+        {activeApp && (
+          <NotificationCenter onNavigate={(target) => {
+            setSection(target)
+            setMenuOpen(false)
+          }}/>
+        )}
         {activeApp && <button type="button" className="all-apps" onClick={() => { setActiveApp(null); setMenuOpen(false) }}>All applications</button>}
         <span className="environment">LOCALHOST</span>
         <span className="user">dev@glasscolabs.com</span>
