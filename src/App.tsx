@@ -10,15 +10,22 @@ import ReportsWorkspace from './features/reports/ReportsWorkspace'
 import CommandDashboard from './features/dashboard/CommandDashboard'
 import NotificationCenter from './features/notifications/NotificationCenter'
 import RetirementWorkspace from './features/retirement/RetirementWorkspace'
+import AccessGovernance from './features/access/AccessGovernance'
 import Icon, { type IconName } from './components/Icon'
+import { canOpen, roleById, roles, type ModuleName, type RoleId } from './lib/accessControl'
+import { useLocalStore } from './lib/localStore'
 
-const navItems = ['Dashboard', 'Shared Masters', 'Asset Inventory', 'Allocation & Custody', 'Maintenance & Inspection', 'Assurance & Controls', 'Asset Retirement & Circularity', 'Reports & Analytics']
-const navIcons: IconName[] = ['dashboard', 'masters', 'inventory', 'allocation', 'maintenance', 'assurance', 'history', 'reports']
+const navItems:ModuleName[] = ['Dashboard', 'Shared Masters', 'Asset Inventory', 'Allocation & Custody', 'Maintenance & Inspection', 'Assurance & Controls', 'Asset Retirement & Circularity', 'Reports & Analytics','Access & Roles']
+const iconByModule:Record<ModuleName,IconName> = {Dashboard:'dashboard','Shared Masters':'masters','Asset Inventory':'inventory','Allocation & Custody':'allocation','Maintenance & Inspection':'maintenance','Assurance & Controls':'assurance','Asset Retirement & Circularity':'history','Reports & Analytics':'reports','Access & Roles':'assurance'}
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [section, setSection] = useState('Dashboard')
   const [activeApp, setActiveApp] = useState<string | null>(null)
+  const [activeRole,setActiveRole]=useLocalStore<RoleId>('itms.active-role.v1','administrator')
+  const permittedItems=navItems.filter(item=>canOpen(activeRole,item))
+  function navigate(target:string){const module=target as ModuleName;if(canOpen(activeRole,module)){setSection(module);setMenuOpen(false)}}
+  function switchRole(role:RoleId){setActiveRole(role);if(!canOpen(role,section as ModuleName))setSection('Dashboard')}
 
   return (
     <div className="app-shell">
@@ -29,34 +36,35 @@ function App() {
         <div className="topbar-spacer" />
         {activeApp && (
           <NotificationCenter onNavigate={(target) => {
-            setSection(target)
-            setMenuOpen(false)
+            navigate(target)
           }}/>
         )}
         {activeApp && <button type="button" className="all-apps" onClick={() => { setActiveApp(null); setMenuOpen(false) }}><Icon name="dashboard" size={18}/>All applications</button>}
         <span className="environment">LOCALHOST</span>
-        <span className="user">dev@glasscolabs.com</span>
+        {activeApp&&<label className="role-simulator">Testing as<select value={activeRole} onChange={event=>switchRole(event.target.value as RoleId)}>{roles.map(role=><option value={role.id} key={role.id}>{role.name}</option>)}</select></label>}
+        <span className="user">dev@glasscolabs.com · {roleById(activeRole).name}</span>
       </header>
 
       {!activeApp ? <AppLauncher onOpen={setActiveApp} /> : <div className="body-layout">
         <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
           <div className="sidebar-label">IT Asset Lifecycle</div>
           <nav aria-label="Primary navigation">
-            {navItems.map((item, index) => <button type="button" className={section === item ? 'active' : ''} key={item} onClick={() => { setSection(item); setMenuOpen(false) }}><Icon name={navIcons[index]} size={18}/>{item}</button>)}
+            {permittedItems.map(item => <button type="button" className={section === item ? 'active' : ''} key={item} onClick={() => navigate(item)}><Icon name={iconByModule[item]} size={18}/>{item}</button>)}
           </nav>
           <div className="sidebar-footer"><strong>Controlled system</strong><span>Local development foundation</span></div>
         </aside>
         {menuOpen && <button type="button" className="backdrop" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
 
-        <main>
-          {section === 'Shared Masters' ? <SharedMasters />
+        <main className={`role-${activeRole} section-${section.toLowerCase().replaceAll(/[^a-z0-9]+/g,'-')}`}>
+          {!canOpen(activeRole,section as ModuleName)?<section className="access-denied"><Icon name="assurance" size={42}/><h1>ITMS access not assigned</h1><p>{roleById(activeRole).name} has no operational access to this module. Ask an Administrator to amend the controlled access register.</p><button type="button" onClick={()=>setActiveApp(null)}>Return to All applications</button></section>:section === 'Shared Masters' ? <SharedMasters />
             : section === 'Asset Inventory' ? <InventoryWorkspace />
             : section === 'Allocation & Custody' ? <AllocationCustody />
             : section === 'Maintenance & Inspection' ? <MaintenanceWorkspace />
             : section === 'Assurance & Controls' ? <AssuranceWorkspace />
             : section === 'Asset Retirement & Circularity' ? <RetirementWorkspace />
             : section === 'Reports & Analytics' ? <ReportsWorkspace />
-            : <CommandDashboard onNavigate={setSection}/>}
+            : section === 'Access & Roles' ? <AccessGovernance activeRole={activeRole}/>
+            : <CommandDashboard onNavigate={navigate}/>}
         </main>
       </div>}
     </div>

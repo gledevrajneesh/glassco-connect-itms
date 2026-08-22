@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import DataTable from '../../components/DataTable'
 import { useLocalStore } from '../../lib/localStore'
 import { deriveCustody, type AssetDisposition, type CustodyMovement } from '../../lib/custodyLifecycle'
+import { canDo, type RoleId } from '../../lib/accessControl'
 
 type Department = { id: string; code: string; name: string; status: string }
 type User = { id: string; employeeCode: string; name: string; departmentId: string; status: string }
@@ -23,6 +24,7 @@ export default function CustodyMovements() {
   const [form, setForm] = useState(blank)
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
+  const [activeRole] = useLocalStore<RoleId>('itms.active-role.v1', 'administrator');const canRequest=canDo(activeRole,'request.custody');const canManagerApprove=canDo(activeRole,'approve.asset-manager');const canHeadApprove=canDo(activeRole,'approve.it-head')
   const custody = useMemo(() => deriveCustody(allocations, movements, assets), [allocations, movements, assets])
   const pendingAssets = new Set(movements.filter((item) => item.state !== 'Completed').map((item) => item.assetId))
   const available = assets.filter((asset) => custody.has(asset.id) && !pendingAssets.has(asset.id))
@@ -47,7 +49,7 @@ export default function CustodyMovements() {
   }
 
   return <section className="master-panel custody-panel">
-    <div className="operation-heading"><div><span className="eyebrow">CONTROLLED CUSTODY MOVEMENTS</span><h2>Transfers and returns</h2><p>Preserve the complete custody chain through dual approval and effective dates.</p></div><button className="primary-action" type="button" onClick={() => setOpen(!open)}>＋ New movement</button></div>
+    <div className="operation-heading"><div><span className="eyebrow">CONTROLLED CUSTODY MOVEMENTS</span><h2>Transfers and returns</h2><p>Preserve the complete custody chain through dual approval and effective dates.</p></div>{canRequest&&<button className="primary-action" type="button" onClick={() => setOpen(!open)}>＋ New movement</button>}</div>
     {open && <form className="master-form allocation-form" onSubmit={create}>
       <label>Movement type<select value={form.kind} onChange={(event) => setForm({ ...blank, kind: event.target.value as 'Transfer' | 'Return' })}><option>Transfer</option><option>Return</option></select></label>
       <label>Currently allocated asset<select required value={form.assetId} onChange={(event) => setForm({ ...form, assetId: event.target.value, toUserId: '' })}><option value="">Select asset</option>{available.map((asset) => <option value={asset.id} key={asset.id}>{label(asset.id)} · {userLabel(custody.get(asset.id)?.userId ?? '')}</option>)}</select></label>
@@ -60,7 +62,7 @@ export default function CustodyMovements() {
     {message && <div className="success-message">✓ {message}</div>}
     <div className="master-summary"><div><span>Movement records</span><strong>{movements.length}</strong></div><div><span>Pending approval</span><strong>{movements.filter((item) => item.state !== 'Completed').length}</strong></div><div><span>Completed</span><strong>{movements.filter((item) => item.state === 'Completed').length}</strong></div></div>
     <DataTable rows={[...movements].reverse()} rowKey={(item) => item.id} columns={[
-      { key: 'code', label: 'Movement', sticky: true, width: '180px', render: (item) => <><strong>{item.code}</strong><small>{item.kind}</small></> }, { key: 'asset', label: 'Asset', width: '260px', render: (item) => label(item.assetId) }, { key: 'from', label: 'From employee', width: '220px', render: (item) => userLabel(item.fromUserId) }, { key: 'to', label: 'To / disposition', width: '220px', render: (item) => item.kind === 'Return' ? 'IT stock inspection' : userLabel(item.toUserId) }, { key: 'date', label: 'Effective date', width: '130px', render: (item) => item.effectiveDate }, { key: 'state', label: 'Status', width: '170px', render: (item) => <span className={`custody-state ${item.state === 'Completed' ? 'active' : 'pending'}`}>{item.state}</span> }, { key: 'trail', label: 'Approval history', width: '300px', render: (item) => <><small>Requested {stamp(item.requestedAt)}</small><small>Manager {stamp(item.assetManagerApprovedAt)}</small><small>IT Head {stamp(item.itHeadApprovedAt)}</small></> }, { key: 'action', label: 'Action', width: '170px', render: (item) => item.state === 'Pending Asset Manager' ? <button className="table-action" type="button" onClick={() => managerApprove(item.id)}>Manager approve</button> : item.state === 'Pending IT Head' ? <button className="table-action" type="button" onClick={() => headApprove(item.id)}>IT Head approve</button> : 'Completed' },
+      { key: 'code', label: 'Movement', sticky: true, width: '180px', render: (item) => <><strong>{item.code}</strong><small>{item.kind}</small></> }, { key: 'asset', label: 'Asset', width: '260px', render: (item) => label(item.assetId) }, { key: 'from', label: 'From employee', width: '220px', render: (item) => userLabel(item.fromUserId) }, { key: 'to', label: 'To / disposition', width: '220px', render: (item) => item.kind === 'Return' ? 'IT stock inspection' : userLabel(item.toUserId) }, { key: 'date', label: 'Effective date', width: '130px', render: (item) => item.effectiveDate }, { key: 'state', label: 'Status', width: '170px', render: (item) => <span className={`custody-state ${item.state === 'Completed' ? 'active' : 'pending'}`}>{item.state}</span> }, { key: 'trail', label: 'Approval history', width: '300px', render: (item) => <><small>Requested {stamp(item.requestedAt)}</small><small>Manager {stamp(item.assetManagerApprovedAt)}</small><small>IT Head {stamp(item.itHeadApprovedAt)}</small></> }, { key: 'action', label: 'Action', width: '170px', render: (item) => item.state === 'Pending Asset Manager' ? canManagerApprove?<button className="table-action" type="button" onClick={() => managerApprove(item.id)}>Manager approve</button>:'Awaiting Asset Manager' : item.state === 'Pending IT Head' ? canHeadApprove?<button className="table-action" type="button" onClick={() => headApprove(item.id)}>IT Head approve</button>:'Awaiting IT Head' : 'Completed' },
     ]} empty={<div className="empty-state"><strong>No transfer or return records</strong><p>Create a movement when custody must change.</p></div>} />
   </section>
 }
