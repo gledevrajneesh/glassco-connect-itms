@@ -7,11 +7,8 @@ import AllocationCustody from './features/custody/AllocationCustody'
 import MaintenanceWorkspace from './features/maintenance/MaintenanceWorkspace'
 import AssuranceWorkspace from './features/assurance/AssuranceWorkspace'
 import ReportsWorkspace from './features/reports/ReportsWorkspace'
+import CommandDashboard from './features/dashboard/CommandDashboard'
 import Icon, { type IconName } from './components/Icon'
-
-const modules = [
-  ['Shared Masters', 'Users, departments, sites and vendors', 'masters'], ['Asset Inventory', 'Stock, identity, condition and lifecycle', 'inventory'], ['Allocation & Custody', 'Issue, transfer, return and clearance', 'allocation'], ['Maintenance & Inspection', 'Plans, checklists, calendar and repairs', 'maintenance'], ['Assurance & Controls', 'Verification, exceptions and disposal', 'assurance'], ['Reports & Analytics', 'Dashboards, forecasts and audit trail', 'reports'],
-] as [string, string, IconName][]
 
 const navItems = ['Dashboard', 'Shared Masters', 'Asset Inventory', 'Allocation & Custody', 'Maintenance & Inspection', 'Assurance & Controls', 'Reports & Analytics']
 const navIcons: IconName[] = ['dashboard', 'masters', 'inventory', 'allocation', 'maintenance', 'assurance', 'reports']
@@ -44,27 +41,13 @@ function App() {
         {menuOpen && <button type="button" className="backdrop" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
 
         <main>
-          {section === 'Shared Masters' ? <SharedMasters /> : section === 'Asset Inventory' ? <InventoryWorkspace /> : section === 'Allocation & Custody' ? <AllocationCustody /> : section === 'Maintenance & Inspection' ? <MaintenanceWorkspace /> : section === 'Assurance & Controls' ? <AssuranceWorkspace /> : section === 'Reports & Analytics' ? <ReportsWorkspace /> : <>
-          <section className="page-heading">
-            <div><span className="eyebrow">GCCP-ITMS-FOUNDATION-01</span><h1>IT Asset Lifecycle Dashboard</h1><p>One governed source for IT inventory, custody, maintenance and assurance.</p></div>
-            <span className="phase">PHASE 1 · LOCALHOST</span>
-          </section>
-
-          <section className="status-grid" aria-label="Foundation status">
-            <article><span>Development mode</span><strong>Local only</strong><small>No cloud connection</small></article>
-            <article><span>Responsive baseline</span><strong>Mobile first</strong><small>Desktop · tablet · phone</small></article>
-            <article><span>Firebase ownership</span><strong>Reserved</strong><small>dev@glasscolabs.com</small></article>
-          </section>
-
-          <section className="panel">
-            <div className="panel-heading"><div><span className="eyebrow">APPROVED OPERATING MODEL</span><h2>Phase 1 capability foundation</h2><p>Modules will be activated through controlled build checkpoints.</p></div><button type="button" disabled>Build 0.1.0</button></div>
-            <div className="module-grid">
-              {modules.map(([title, description, icon]) => <article className="module" key={title}><span className="module-icon"><Icon name={icon} size={22}/></span><div><h3>{title}</h3><p>{description}</p><span className="planned">PLANNED</span></div></article>)}
-            </div>
-          </section>
-
-          <section className="boundary"><strong>Foundation boundary</strong><span>100% localhost development first. Firebase Spark deployment will begin only after local acceptance and explicit approval.</span></section>
-          </>}
+          {section === 'Shared Masters' ? <SharedMasters />
+            : section === 'Asset Inventory' ? <InventoryWorkspace />
+            : section === 'Allocation & Custody' ? <AllocationCustody />
+            : section === 'Maintenance & Inspection' ? <MaintenanceWorkspace />
+            : section === 'Assurance & Controls' ? <AssuranceWorkspace />
+            : section === 'Reports & Analytics' ? <ReportsWorkspace />
+            : <CommandDashboard onNavigate={setSection}/>}
         </main>
       </div>}
     </div>
