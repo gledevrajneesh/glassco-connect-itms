@@ -16,6 +16,9 @@ Status: Built and locked
 - Cancelled requests restore the asset's prior lifecycle state.
 - Data-sanitisation/non-applicability confirmation, recipient/recycler details, handover reference, value and justification are retained.
 - Route-specific printable declaration with a numbered asset schedule and accountable signature blocks.
+- Completing physical handover automatically stamps and opens the final PDF declaration.
+- Final declarations retain Asset Manager approval, IT Head approval, lifecycle-completion and PDF-generation timestamps.
+- In-progress records may print only a draft declaration; completed records expose a Reprint final PDF action.
 
 ## Important boundary
 
