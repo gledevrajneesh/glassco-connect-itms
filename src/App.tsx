@@ -9,10 +9,11 @@ import AssuranceWorkspace from './features/assurance/AssuranceWorkspace'
 import ReportsWorkspace from './features/reports/ReportsWorkspace'
 import CommandDashboard from './features/dashboard/CommandDashboard'
 import NotificationCenter from './features/notifications/NotificationCenter'
+import RetirementWorkspace from './features/retirement/RetirementWorkspace'
 import Icon, { type IconName } from './components/Icon'
 
-const navItems = ['Dashboard', 'Shared Masters', 'Asset Inventory', 'Allocation & Custody', 'Maintenance & Inspection', 'Assurance & Controls', 'Reports & Analytics']
-const navIcons: IconName[] = ['dashboard', 'masters', 'inventory', 'allocation', 'maintenance', 'assurance', 'reports']
+const navItems = ['Dashboard', 'Shared Masters', 'Asset Inventory', 'Allocation & Custody', 'Maintenance & Inspection', 'Assurance & Controls', 'Asset Retirement & Circularity', 'Reports & Analytics']
+const navIcons: IconName[] = ['dashboard', 'masters', 'inventory', 'allocation', 'maintenance', 'assurance', 'history', 'reports']
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -53,6 +54,7 @@ function App() {
             : section === 'Allocation & Custody' ? <AllocationCustody />
             : section === 'Maintenance & Inspection' ? <MaintenanceWorkspace />
             : section === 'Assurance & Controls' ? <AssuranceWorkspace />
+            : section === 'Asset Retirement & Circularity' ? <RetirementWorkspace />
             : section === 'Reports & Analytics' ? <ReportsWorkspace />
             : <CommandDashboard onNavigate={setSection}/>}
         </main>
