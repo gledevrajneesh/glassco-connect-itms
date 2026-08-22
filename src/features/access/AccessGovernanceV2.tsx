@@ -1,0 +1,70 @@
+import { useMemo, useState } from 'react'
+import DataTable from '../../components/DataTable'
+import Icon from '../../components/Icon'
+import { moduleNames, roleById, roles, type ModuleName, type RoleId } from '../../lib/accessControl'
+import { useLocalStore } from '../../lib/localStore'
+import './AccessGovernance.css'
+
+type AccessState = 'Active' | 'Suspended' | 'Archived'
+export type AccessAssignment = { id:string; name:string; email:string; roleId:RoleId; roleIds?:RoleId[]; status:AccessState; updatedAt:string; updatedBy:string }
+type AccessEvent = { id:string; principal:string; before:string; after:string; action:string; actor:string; at:string }
+type UserDraft = { id?:string; name:string; email:string; roleIds:RoleId[]; status:'Active'|'Suspended' }
+const stamp=new Date().toISOString()
+const seed:AccessAssignment[]=[
+  {id:'dev',name:'Development Administrator',email:'dev@glasscolabs.com',roleId:'administrator',roleIds:['administrator'],status:'Active',updatedAt:stamp,updatedBy:'System seed'},
+  {id:'asset-manager',name:'IT Asset Manager',email:'asset.manager@glasscolabs.com',roleId:'asset-manager',roleIds:['asset-manager'],status:'Active',updatedAt:stamp,updatedBy:'System seed'},
+  {id:'it-head',name:'IT Head',email:'it.head@glasscolabs.com',roleId:'it-head',roleIds:['it-head'],status:'Active',updatedAt:stamp,updatedBy:'System seed'},
+  {id:'auditor',name:'Independent Auditor',email:'auditor@example.test',roleId:'auditor',roleIds:['auditor'],status:'Active',updatedAt:stamp,updatedBy:'System seed'},
+  {id:'dept-manager',name:'Department Manager',email:'department.manager@glasscolabs.com',roleId:'department-manager',roleIds:['department-manager'],status:'Active',updatedAt:stamp,updatedBy:'System seed'},
+  {id:'standard-user',name:'Standard Employee',email:'employee@example.test',roleId:'standard-user',roleIds:['standard-user'],status:'Active',updatedAt:stamp,updatedBy:'System seed'},
+]
+const blankDraft=():UserDraft=>({name:'',email:'',roleIds:['standard-user'],status:'Active'})
+const assignedRoles=(assignment:AccessAssignment)=>assignment.roleIds?.length?assignment.roleIds:[assignment.roleId]
+const roleSummary=(roleIds:RoleId[])=>roleIds.map(id=>roleById(id).name).join(', ')
+const effectiveModules=(roleIds:RoleId[])=>moduleNames.filter(module=>roleIds.some(id=>roleById(id).modules.includes(module)))
+
+export default function AccessGovernanceV2({activeRole}:{activeRole:RoleId}){
+  const [assignments,setAssignments]=useLocalStore<AccessAssignment[]>('itms.access-assignments.v1',seed)
+  const [events,setEvents]=useLocalStore<AccessEvent[]>('itms.access-events.v1',[])
+  const [history,setHistory]=useState(false)
+  const [showArchived,setShowArchived]=useState(false)
+  const [draft,setDraft]=useState<UserDraft|null>(null)
+  const [message,setMessage]=useState('')
+  const [error,setError]=useState('')
+  const editable=activeRole==='administrator'
+  const visibleAssignments=useMemo(()=>assignments.filter(item=>showArchived||item.status!=='Archived'),[assignments,showArchived])
+  const record=(principal:string,before:string,after:string,action:string,at=new Date().toISOString())=>setEvents(current=>[...current,{id:crypto.randomUUID(),principal,before,after,action,actor:'dev@glasscolabs.com',at}])
+  function startEdit(assignment?:AccessAssignment){if(!editable)return;setError('');setMessage('');setDraft(assignment?{id:assignment.id,name:assignment.name,email:assignment.email,roleIds:assignedRoles(assignment),status:assignment.status==='Suspended'?'Suspended':'Active'}:blankDraft())}
+  function toggleRole(roleId:RoleId){setDraft(current=>current?{...current,roleIds:current.roleIds.includes(roleId)?current.roleIds.filter(id=>id!==roleId):[...current.roleIds,roleId]}:current)}
+  function saveUser(){
+    if(!editable||!draft)return
+    const name=draft.name.trim(),email=draft.email.trim().toLowerCase()
+    if(!name||!/^\S+@\S+\.\S+$/.test(email)){setError('Enter a valid user name and email address.');return}
+    if(!draft.roleIds.length){setError('Assign at least one role, or archive the user to revoke all access.');return}
+    if(assignments.some(item=>item.email.toLowerCase()===email&&item.id!==draft.id)){setError('This email address already exists in the access register.');return}
+    const at=new Date().toISOString()
+    if(draft.id){
+      const before=assignments.find(item=>item.id===draft.id);if(!before)return
+      const next:AccessAssignment={...before,name,email,roleId:draft.roleIds[0],roleIds:draft.roleIds,status:draft.status,updatedAt:at,updatedBy:'dev@glasscolabs.com'}
+      setAssignments(current=>current.map(item=>item.id===draft.id?next:item))
+      record(before.email,`${before.name} · ${roleSummary(assignedRoles(before))} · ${before.status}`,`${next.name} · ${roleSummary(next.roleIds??[])} · ${next.status}`,'User details and roles updated',at)
+      setMessage(`${email} updated with an immutable access event.`)
+    }else{
+      const created:AccessAssignment={id:crypto.randomUUID(),name,email,roleId:draft.roleIds[0],roleIds:draft.roleIds,status:draft.status,updatedAt:at,updatedBy:'dev@glasscolabs.com'}
+      setAssignments(current=>[...current,created]);record(email,'Not registered',`${name} · ${roleSummary(draft.roleIds)} · ${draft.status}`,'User added',at);setMessage(`${email} added to the controlled access register.`)
+    }
+    setDraft(null);setError('')
+  }
+  function changeState(assignment:AccessAssignment,status:AccessState){if(!editable||assignment.id==='dev')return;const at=new Date().toISOString();setAssignments(current=>current.map(item=>item.id===assignment.id?{...item,status,updatedAt:at,updatedBy:'dev@glasscolabs.com'}:item));record(assignment.email,assignment.status,status,status==='Archived'?'User archived and all access revoked':'Access state changed',at);setMessage(status==='Archived'?`${assignment.email} archived; its history has been retained.`:`${assignment.email} access changed to ${status}.`)}
+  return <>
+    <section className="page-heading"><div><span className="eyebrow">GCCP-ITMS-BUILD-17</span><h1>Access, Roles &amp; Approval Governance</h1><p>Add users, combine least-privilege roles and preserve every authority change.</p></div><span className="phase">ENFORCED ACCESS</span></section>
+    <section className="access-role-grid">{roles.map(role=><article key={role.id}><Icon name={role.id==='auditor'?'reports':'assurance'} size={24}/><div><strong>{role.name}</strong><p>{role.description}</p><small>{role.modules.length} modules · {role.actions.length} controlled actions</small></div></article>)}</section>
+    <section className="master-panel">
+      <div className="master-toolbar access-toolbar"><div><span className="eyebrow">CENTRAL ACCESS REGISTER</span><h2>User application authority</h2></div><div className="toolbar-actions"><button type="button" className="secondary-action" onClick={()=>setShowArchived(value=>!value)}>{showArchived?'Hide archived':'Show archived'}</button><button type="button" className="secondary-action" onClick={()=>setHistory(!history)}><Icon name="history" size={17}/>{history?'Assignments':'Access history'}</button>{editable&&!history&&<button type="button" className="primary-action" onClick={()=>startEdit()}><Icon name="plus" size={17}/>Add user</button>}</div></div>
+      {!editable&&<div className="access-warning">Read-only: only an Administrator may change users, roles or access.</div>}{message&&<div className="success-message"><Icon name="check" size={17}/>{message}</div>}
+      {draft&&<div className="access-editor"><div className="access-editor-heading"><div><span className="eyebrow">{draft.id?'EDIT CONTROLLED USER':'NEW CONTROLLED USER'}</span><h3>{draft.id?'Update identity and roles':'Add user access'}</h3></div><button type="button" className="editor-close" onClick={()=>setDraft(null)} aria-label="Close editor"><Icon name="close" size={18}/></button></div><div className="access-fields"><label>User name<input value={draft.name} onChange={event=>setDraft({...draft,name:event.target.value})}/></label><label>Business email<input type="email" value={draft.email} onChange={event=>setDraft({...draft,email:event.target.value})}/></label><label>Access state<select value={draft.status} onChange={event=>setDraft({...draft,status:event.target.value as UserDraft['status']})}><option>Active</option><option>Suspended</option></select></label></div><fieldset className="role-picker"><legend>Assigned roles <span>select one or more</span></legend>{roles.map(role=><label className={draft.roleIds.includes(role.id)?'selected':''} key={role.id}><input type="checkbox" checked={draft.roleIds.includes(role.id)} onChange={()=>toggleRole(role.id)}/><span><strong>{role.name}</strong><small>{role.description}</small></span></label>)}</fieldset><div className="effective-preview"><strong>Effective modules</strong><div className="module-chips">{effectiveModules(draft.roleIds).length?effectiveModules(draft.roleIds).map(module=><span key={module}>{module}</span>):<em>No operational modules</em>}</div></div>{error&&<div className="access-error">{error}</div>}<div className="editor-actions"><button type="button" className="secondary-action" onClick={()=>setDraft(null)}>Cancel</button><button type="button" className="primary-action" onClick={saveUser}><Icon name="check" size={17}/>{draft.id?'Save changes':'Add user'}</button></div></div>}
+      {history?<DataTable rows={[...events].reverse()} rowKey={item=>item.id} columns={[{key:'at',label:'Timestamp',sticky:true,width:'190px',render:item=>new Date(item.at).toLocaleString('en-IN')},{key:'principal',label:'User',width:'250px',render:item=><strong>{item.principal}</strong>},{key:'action',label:'Change',width:'230px',render:item=>item.action},{key:'before',label:'Before',width:'300px',render:item=>item.before},{key:'after',label:'After',width:'300px',render:item=>item.after},{key:'actor',label:'Changed by',width:'240px',render:item=>item.actor}]} empty={<div className="empty-state"><Icon name="history" size={30}/><strong>No access changes recorded</strong></div>}/>:<DataTable rows={visibleAssignments} rowKey={item=>item.id} columns={[{key:'user',label:'User',sticky:true,width:'270px',render:item=><><strong>{item.name}</strong><small>{item.email}</small></>},{key:'role',label:'Assigned roles',width:'300px',render:item=><div className="assigned-role-chips">{assignedRoles(item).map(roleId=><span key={roleId}>{roleById(roleId).name}</span>)}</div>},{key:'modules',label:'Effective modules',width:'470px',render:item=><div className="module-chips">{effectiveModules(assignedRoles(item)).map((module:ModuleName)=><span key={module}>{module}</span>)}</div>},{key:'status',label:'Access state',width:'150px',render:item=><span className={`access-state-control ${item.status==='Active'?'active':'inactive'}`}>{item.status}</span>},{key:'updated',label:'Last governed change',width:'220px',render:item=><><small>{new Date(item.updatedAt).toLocaleString('en-IN')}</small><small>{item.updatedBy}</small></>},{key:'actions',label:'Actions',width:'270px',render:item=><div className="access-row-actions"><button type="button" disabled={!editable||item.status==='Archived'} onClick={()=>startEdit(item)}>Edit</button>{item.status!=='Archived'&&<button type="button" disabled={!editable||item.id==='dev'} onClick={()=>changeState(item,item.status==='Active'?'Suspended':'Active')}>{item.status==='Active'?'Suspend':'Reactivate'}</button>}<button type="button" className="archive" disabled={!editable||item.id==='dev'||item.status==='Archived'} onClick={()=>changeState(item,'Archived')}>Archive</button></div>}]} empty={<div className="empty-state"><strong>No access assignments</strong></div>}/>} 
+      <div className="access-matrix"><h3>Effective role matrix</h3>{moduleNames.map(module=><div key={module}><strong>{module}</strong>{roles.map(role=><span className={role.modules.includes(module)?'allowed':'denied'} key={role.id}>{role.modules.includes(module)?'✓':'—'} {role.name}</span>)}</div>)}</div>
+    </section>
+  </>
+}
