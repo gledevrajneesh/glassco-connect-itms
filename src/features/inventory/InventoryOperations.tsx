@@ -21,6 +21,7 @@ type Asset = { id: string; assetId: string; receiptId: string; receiptLineId?: s
 type Allocation = { id: string; code: string; userId: string; assetIds: string[]; replacementAssetId?: string; allocationKind?: string; allocationDate: string; state: string; requestedAt: string; itHeadApprovedAt: string }
 type User = { id: string; employeeCode: string; name: string }
 type Lifecycle = { id: string; code: string; kind: 'Onboarding' | 'Offboarding'; userId: string; assetIds: string[]; disposition?: string; state: string; createdAt: string; effectiveDate: string }
+type WarrantyClaim = { id: string; code: string; assetId: string; claimStatus: string; rmaReference: string; resolutionType?: string; replacementAssetId?: string; replacementOutcome: string; reportedDate: string; updatedAt: string }
 
 const today = () => new Date().toISOString().slice(0, 10)
 const newReceipt = { vendorId: '', invoiceNumber: '', purchaseOrder: '', receivedDate: today(), receivedBy: 'dev@glasscolabs.com', typeId: '', modelId: '', quantity: '1', outcome: 'Accepted' as ReceiptOutcome, inspectionNote: '' }
@@ -58,6 +59,7 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
   const [verifications] = useLocalStore<VerificationRecord[]>('itms.asset-verifications.v1', [])
   const [disposals] = useLocalStore<DisposalRecord[]>('itms.asset-disposals.v1', [])
   const [retirements] = useLocalStore<RetirementRecord[]>('itms.asset-retirements.v1', [])
+  const [warrantyClaims] = useLocalStore<WarrantyClaim[]>('itms.warranty-claims.v1', [])
   const [receiptForm, setReceiptForm] = useState(newReceipt)
   const [receiptLines, setReceiptLines] = useState<ReceiptLineDraft[]>([blankReceiptLine()])
   const [assetForm, setAssetForm] = useState(newAsset)
@@ -111,6 +113,7 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
     verifications.filter((item) => item.assetId === asset.id).forEach((item) => events.push({ id: `verification-${item.id}`, at: item.createdAt, title: `${item.code} · Physical verification`, detail: `${item.result} · ${item.observedLocation} · ${item.notes}` }))
     disposals.filter((item) => item.assetId === asset.id).forEach((item) => events.push({ id: `disposal-${item.id}`, at: item.headAt || item.managerAt || item.requestedAt, title: `${item.code} · Disposal / write-off`, detail: `${item.state} · ${item.method} · ${item.reason}` }))
     retirements.filter((item) => (item.assetIds?.length ? item.assetIds : item.assetId ? [item.assetId] : []).includes(asset.id)).forEach((item) => events.push({ id: `retirement-${item.id}`, at: item.completedAt || item.headAt || item.managerAt || item.requestedAt, title: `${item.code} · ${item.route}`, detail: `${item.state} · ${item.partyName} · ${item.reason}` }))
+    warrantyClaims.filter((item) => item.assetId === asset.id || item.replacementAssetId === asset.id).forEach((item) => events.push({ id: `warranty-${item.id}`, at: item.updatedAt || item.reportedDate, title: `${item.code} · Warranty / RMA ${item.claimStatus}`, detail: `${item.rmaReference || 'No RMA reference'} · ${item.resolutionType || 'Outcome pending'} · ${item.replacementOutcome || 'No progress note'}${item.replacementAssetId ? ` · replacement ${assets.find((value) => value.id === item.replacementAssetId)?.assetId ?? item.replacementAssetId}` : ''}` }))
     return events.sort((a, b) => b.at.localeCompare(a.at))
   }
 
