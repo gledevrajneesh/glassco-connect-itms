@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react'
+import { useEffect, useMemo, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react'
 import { useLocalStore } from '../../lib/localStore'
 import DataTable from '../../components/DataTable'
 import { changedFields, useMasterAudit } from '../../lib/masterAudit'
@@ -6,7 +6,8 @@ import { changedFields, useMasterAudit } from '../../lib/masterAudit'
 type Status = 'Active' | 'Inactive'
 type TrackingMode = 'Serialized asset' | 'Accessory / component' | 'Consumable'
 type CatalogueTab = 'Vendors' | 'Asset groups' | 'Asset types' | 'Brands' | 'Models' | 'Configuration profiles'
-type Vendor = { id: string; code: string; name: string; gst: string; contact: string; email: string; address: string; status: Status }
+type VendorClass = 'Preferred' | 'Approved' | 'Conditional' | 'Blocked'
+type Vendor = { id: string; code: string; name: string; gst: string; contact: string; email: string; address: string; slaDays?: string; escalationContact?: string; performanceStatus?: VendorClass; status: Status }
 type AssetGroup = { id: string; code: string; name: string; lifecycleYears: string; status: Status }
 type AssetType = { id: string; code: string; name: string; groupId: string; inspectionFrequency: string; trackingMode?: TrackingMode; status: Status }
 type Brand = { id: string; code: string; name: string; status: Status }
@@ -14,7 +15,7 @@ type AssetModel = { id: string; code: string; name: string; typeId: string; bran
 type ConfigProfile = { id: string; code: string; name: string; typeId: string; specification: string; cpu?: string; ram?: string; storage?: string; operatingSystem?: string; display?: string; connectivity?: string; identifier?: string; status: Status }
 
 const tabs: CatalogueTab[] = ['Vendors', 'Asset groups', 'Asset types', 'Brands', 'Models', 'Configuration profiles']
-const blankVendor = { code: '', name: '', gst: '', contact: '', email: '', address: '', status: 'Active' as Status }
+const blankVendor = { code: '', name: '', gst: '', contact: '', email: '', address: '', slaDays: '7', escalationContact: '', performanceStatus: 'Approved' as VendorClass, status: 'Active' as Status }
 const blankGroup = { code: '', name: '', lifecycleYears: '', status: 'Active' as Status }
 const blankType = { code: '', name: '', groupId: '', inspectionFrequency: 'Quarterly', trackingMode: 'Serialized asset' as TrackingMode, status: 'Active' as Status }
 const blankBrand = { code: '', name: '', status: 'Active' as Status }
@@ -51,6 +52,12 @@ const demoProfiles: ConfigProfile[] = [
 
 function createId(prefix: string) { return `${prefix}-${crypto.randomUUID()}` }
 
+type Receipt = { id: string; vendorId: string; outcome: string; receivedDate: string }
+type Asset = { id: string; receiptId: string; cost: number }
+type Maintenance = { id: string; vendorId: string; kind: string; cost: number; state: string; createdAt: string; completedAt: string; gatePass?: { dispatchedDate: string; returnedAt: string } }
+type Claim = { id: string; vendorId: string; claimStatus: string; reportedDate: string; closedAt: string }
+type VendorMetric = { vendor: Vendor; receipts: number; purchaseSpend: number; repairJobs: number; repairSpend: number; overdueRepairs: number; averageTurnaround: number; acceptedRate: number; claimResolutionRate: number; score: number; suggestedClass: VendorClass }
+
 export default function AssetCatalogue({ embedded = false }: { embedded?: boolean }) {
   const [tab, setTab] = useState<CatalogueTab>('Vendors')
   const [formOpen, setFormOpen] = useState(false)
@@ -61,6 +68,10 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
   const [brands, setBrands] = useLocalStore<Brand[]>('itms.brands.v1', [])
   const [models, setModels] = useLocalStore<AssetModel[]>('itms.asset-models.v1', [])
   const [profiles, setProfiles] = useLocalStore<ConfigProfile[]>('itms.config-profiles.v1', [])
+  const [receipts] = useLocalStore<Receipt[]>('itms.receipts.v1', [])
+  const [assets] = useLocalStore<Asset[]>('itms.assets.v1', [])
+  const [maintenance] = useLocalStore<Maintenance[]>('itms.asset-maintenance.v1', [])
+  const [claims] = useLocalStore<Claim[]>('itms.warranty-claims.v1', [])
   const [vendorForm, setVendorForm] = useState(blankVendor)
   const [groupForm, setGroupForm] = useState(blankGroup)
   const [typeForm, setTypeForm] = useState(blankType)
@@ -69,10 +80,33 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
   const [profileForm, setProfileForm] = useState(blankProfile)
   const [editingId, setEditingId] = useState('')
   const [showHistory, setShowHistory] = useState(false)
+  const [evaluationVendorId, setEvaluationVendorId] = useState('')
   const audit = useMasterAudit()
 
   const records = tab === 'Vendors' ? vendors : tab === 'Asset groups' ? groups : tab === 'Asset types' ? types : tab === 'Brands' ? brands : tab === 'Models' ? models : profiles
   const activeCount = records.filter((record) => record.status === 'Active').length
+  const vendorMetrics = useMemo<VendorMetric[]>(() => vendors.map((vendor) => {
+    const vendorReceipts = receipts.filter((receipt) => receipt.vendorId === vendor.id)
+    const receiptIds = new Set(vendorReceipts.map((receipt) => receipt.id))
+    const vendorRepairs = maintenance.filter((record) => record.vendorId === vendor.id && record.kind === 'Repair')
+    const vendorClaims = claims.filter((claim) => claim.vendorId === vendor.id)
+    const completedTurnarounds = vendorRepairs.flatMap((record) => {
+      const start = record.gatePass?.dispatchedDate || record.createdAt?.slice(0, 10)
+      const end = record.gatePass?.returnedAt || record.completedAt
+      if (!start || !end) return []
+      return [Math.max(0, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / 86400000))]
+    })
+    const acceptedRate = vendorReceipts.length ? Math.round(vendorReceipts.filter((receipt) => receipt.outcome === 'Accepted').length / vendorReceipts.length * 100) : 100
+    const resolvedClaims = vendorClaims.filter((claim) => ['Resolved', 'Replaced', 'Closed'].includes(claim.claimStatus)).length
+    const claimResolutionRate = vendorClaims.length ? Math.round(resolvedClaims / vendorClaims.length * 100) : 100
+    const averageTurnaround = completedTurnarounds.length ? Math.round(completedTurnarounds.reduce((sum, days) => sum + days, 0) / completedTurnarounds.length) : 0
+    const overdueRepairs = vendorRepairs.filter((record) => record.state !== 'Completed' && record.gatePass?.dispatchedDate && new Date(record.gatePass.dispatchedDate).getTime() < Date.now() - Number(vendor.slaDays || 7) * 86400000).length
+    const slaPenalty = averageTurnaround > Number(vendor.slaDays || 7) ? Math.min((averageTurnaround - Number(vendor.slaDays || 7)) * 3, 20) : 0
+    const score = Math.max(0, Math.round(100 - (100 - acceptedRate) * .35 - overdueRepairs * 12 - (100 - claimResolutionRate) * .2 - slaPenalty))
+    const suggestedClass: VendorClass = score >= 85 ? 'Preferred' : score >= 70 ? 'Approved' : score >= 50 ? 'Conditional' : 'Blocked'
+    return { vendor, receipts: vendorReceipts.length, purchaseSpend: assets.filter((asset) => receiptIds.has(asset.receiptId)).reduce((sum, asset) => sum + Number(asset.cost || 0), 0), repairJobs: vendorRepairs.length, repairSpend: vendorRepairs.reduce((sum, record) => sum + Number(record.cost || 0), 0), overdueRepairs, averageTurnaround, acceptedRate, claimResolutionRate, score, suggestedClass }
+  }), [assets, claims, maintenance, receipts, vendors])
+  const selectedEvaluation = vendorMetrics.find((metric) => metric.vendor.id === evaluationVendorId)
 
   useEffect(() => {
     setVendors((current) => [...current, ...demoVendors.filter((item) => !current.some((record) => record.code === item.code))])
@@ -96,7 +130,7 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
       setter((current) => editingId ? current.map((item) => item.id === editingId ? record : item) : [...current, record])
       audit.record({ module: tab, recordId: record.id, recordCode: record.code, action: editingId ? 'Updated' : 'Created', changedFields: editingId && source ? changedFields(source, record) : 'Initial record' })
     }
-    if (tab === 'Vendors') persist(setVendors, { id: editingId || createId('vendor'), ...vendorForm, code: normalize(vendorForm.code), name: vendorForm.name.trim(), email: vendorForm.email.trim().toLowerCase() })
+    if (tab === 'Vendors') persist<Vendor>(setVendors, { id: editingId || createId('vendor'), ...vendorForm, code: normalize(vendorForm.code), name: vendorForm.name.trim(), email: vendorForm.email.trim().toLowerCase() })
     if (tab === 'Asset groups') persist(setGroups, { id: editingId || createId('group'), ...groupForm, code: normalize(groupForm.code), name: groupForm.name.trim() })
     if (tab === 'Asset types') persist<AssetType>(setTypes, { id: editingId || createId('type'), ...typeForm, code: normalize(typeForm.code), name: typeForm.name.trim() })
     if (tab === 'Brands') persist(setBrands, { id: editingId || createId('brand'), ...brandForm, code: normalize(brandForm.code), name: brandForm.name.trim() })
@@ -120,7 +154,7 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
 
   function editRecord(record: Vendor | AssetGroup | AssetType | Brand | AssetModel | ConfigProfile) {
     setEditingId(record.id); setFormOpen(true); setShowHistory(false)
-    if ('gst' in record) setVendorForm({ code: record.code, name: record.name, gst: record.gst, contact: record.contact, email: record.email, address: record.address, status: record.status })
+    if ('gst' in record) setVendorForm({ code: record.code, name: record.name, gst: record.gst, contact: record.contact, email: record.email, address: record.address, slaDays: record.slaDays ?? '7', escalationContact: record.escalationContact ?? '', performanceStatus: record.performanceStatus ?? 'Approved', status: record.status })
     else if ('lifecycleYears' in record) setGroupForm({ code: record.code, name: record.name, lifecycleYears: record.lifecycleYears, status: record.status })
     else if ('inspectionFrequency' in record) setTypeForm({ code: record.code, name: record.name, groupId: record.groupId, inspectionFrequency: record.inspectionFrequency, trackingMode: record.trackingMode ?? 'Serialized asset', status: record.status })
     else if ('brand' in record) setModelForm({ code: record.code, name: record.name, typeId: record.typeId, brand: record.brand, warrantyMonths: record.warrantyMonths, status: record.status })
@@ -129,7 +163,7 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
   }
 
   function recordContext(record: Vendor | AssetGroup | AssetType | Brand | AssetModel | ConfigProfile) {
-    if ('gst' in record) return `${record.gst || 'GST not recorded'} · ${record.contact || 'Contact not recorded'} · ${record.email || 'Email not recorded'}`
+    if ('gst' in record) return `${record.gst || 'GST not recorded'} · ${record.contact || 'Contact not recorded'} · ${record.email || 'Email not recorded'} · SLA ${record.slaDays || 'Not set'} days · ${record.performanceStatus ?? 'Approved'}`
     if ('lifecycleYears' in record) return `Planned lifecycle: ${record.lifecycleYears || 'Not set'} years`
     if ('inspectionFrequency' in record) return `${groups.find((item) => item.id === record.groupId)?.name ?? 'Group unavailable'} · ${record.trackingMode ?? 'Serialized asset'} · ${record.inspectionFrequency} inspection`
     if ('brand' in record) return `${record.brand} · ${types.find((item) => item.id === record.typeId)?.name ?? 'Type unavailable'} · ${record.warrantyMonths || '0'} months warranty`
@@ -142,7 +176,7 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
     <section className="master-panel">
       <div className="master-toolbar"><div className="master-tabs" role="tablist" aria-label="Catalogue master type">{tabs.map((item) => <button type="button" role="tab" aria-selected={tab === item} className={tab === item ? 'selected' : ''} key={item} onClick={() => { setTab(item); setMessage(''); setShowHistory(false); resetForm() }}>{item}</button>)}</div><div className="toolbar-actions"><button type="button" className="secondary-action" onClick={() => { setShowHistory(!showHistory); resetForm() }}>Edit history</button><button type="button" className="primary-action" onClick={() => { setShowHistory(false); setFormOpen(!formOpen) }}>＋ Add record</button></div></div>
       {formOpen && <form className="master-form catalogue-form" onSubmit={saveRecord}>
-        {tab === 'Vendors' && <><label>Vendor code<input required value={vendorForm.code} onChange={(event) => setVendorForm({ ...vendorForm, code: event.target.value })} /></label><label>Vendor name<input required value={vendorForm.name} onChange={(event) => setVendorForm({ ...vendorForm, name: event.target.value })} /></label><label>GST number<input value={vendorForm.gst} onChange={(event) => setVendorForm({ ...vendorForm, gst: event.target.value })} /></label><label>Contact number<input required value={vendorForm.contact} onChange={(event) => setVendorForm({ ...vendorForm, contact: event.target.value })} /></label><label>Email<input required type="email" value={vendorForm.email} onChange={(event) => setVendorForm({ ...vendorForm, email: event.target.value })} /></label><label className="wide-field">Address<textarea required value={vendorForm.address} onChange={(event) => setVendorForm({ ...vendorForm, address: event.target.value })} /></label></>}
+        {tab === 'Vendors' && <><label>Vendor code<input required value={vendorForm.code} onChange={(event) => setVendorForm({ ...vendorForm, code: event.target.value })} /></label><label>Vendor name<input required value={vendorForm.name} onChange={(event) => setVendorForm({ ...vendorForm, name: event.target.value })} /></label><label>GST number<input value={vendorForm.gst} onChange={(event) => setVendorForm({ ...vendorForm, gst: event.target.value })} /></label><label>Contact number<input required value={vendorForm.contact} onChange={(event) => setVendorForm({ ...vendorForm, contact: event.target.value })} /></label><label>Email<input required type="email" value={vendorForm.email} onChange={(event) => setVendorForm({ ...vendorForm, email: event.target.value })} /></label><label>Service SLA (days)<input type="number" min="1" value={vendorForm.slaDays} onChange={(event) => setVendorForm({ ...vendorForm, slaDays: event.target.value })}/></label><label>Escalation contact<input value={vendorForm.escalationContact} onChange={(event) => setVendorForm({ ...vendorForm, escalationContact: event.target.value })}/></label><label>Governed classification<select value={vendorForm.performanceStatus} onChange={(event) => setVendorForm({ ...vendorForm, performanceStatus: event.target.value as VendorClass })}><option>Preferred</option><option>Approved</option><option>Conditional</option><option>Blocked</option></select></label><label className="wide-field">Address<textarea required value={vendorForm.address} onChange={(event) => setVendorForm({ ...vendorForm, address: event.target.value })} /></label></>}
         {tab === 'Asset groups' && <><label>Group code<input required value={groupForm.code} onChange={(event) => setGroupForm({ ...groupForm, code: event.target.value })} /></label><label>Group name<input required value={groupForm.name} onChange={(event) => setGroupForm({ ...groupForm, name: event.target.value })} /></label><label>Planned lifecycle (years)<input required type="number" min="1" max="25" value={groupForm.lifecycleYears} onChange={(event) => setGroupForm({ ...groupForm, lifecycleYears: event.target.value })} /></label></>}
         {tab === 'Asset types' && <><label>Type code<input required value={typeForm.code} onChange={(event) => setTypeForm({ ...typeForm, code: event.target.value })} /></label><label>Type name<input required value={typeForm.name} onChange={(event) => setTypeForm({ ...typeForm, name: event.target.value })} /></label><label>Asset group<select required value={typeForm.groupId} onChange={(event) => setTypeForm({ ...typeForm, groupId: event.target.value })}><option value="">Select group</option>{groups.filter((item) => item.status === 'Active').map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label><label>Tracking mode<select value={typeForm.trackingMode} onChange={(event) => setTypeForm({ ...typeForm, trackingMode: event.target.value as TrackingMode })}><option>Serialized asset</option><option>Accessory / component</option><option>Consumable</option></select></label><label>Default inspection<select value={typeForm.inspectionFrequency} onChange={(event) => setTypeForm({ ...typeForm, inspectionFrequency: event.target.value })}><option>Monthly</option><option>Quarterly</option><option>Half-yearly</option><option>Yearly</option><option>On demand</option></select></label></>}
         {tab === 'Brands' && <><label>Brand code<input required value={brandForm.code} onChange={(event) => setBrandForm({ ...brandForm, code: event.target.value })} /></label><label>Brand name<input required value={brandForm.name} onChange={(event) => setBrandForm({ ...brandForm, name: event.target.value })} /></label></>}
@@ -160,7 +194,12 @@ export default function AssetCatalogue({ embedded = false }: { embedded?: boolea
         { key: 'status', label: 'Status', width: '110px', render: (record) => <span className={`status ${record.status.toLowerCase()}`}>{record.status}</span> },
         { key: 'actions', label: 'Actions', width: '210px', render: (record) => <div className="table-actions"><button className="table-action" type="button" onClick={() => editRecord(record)}>Edit</button><button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button></div> },
       ]} empty={<div className="empty-state"><span>▣</span><strong>No {tab.toLowerCase()} recorded</strong><p>Add the first controlled record to continue.</p></div>} />
+      {tab === 'Vendors' && <section className="vendor-performance"><header><div><span className="eyebrow">VENDOR PERFORMANCE &amp; SERVICE CONTROL</span><h2>Live supplier scorecards</h2><p>Calculated from receipts, repair service, spend, SLA adherence and warranty outcomes already recorded in ITMS.</p></div></header><DataTable rows={vendorMetrics} rowKey={(metric) => metric.vendor.id} columns={[
+        { key: 'vendor', label: 'Vendor', sticky: true, width: '220px', render: (metric) => <div><strong>{metric.vendor.code} · {metric.vendor.name}</strong><small>Governed: {metric.vendor.performanceStatus ?? 'Approved'} · SLA {metric.vendor.slaDays ?? '7'} days</small></div> },
+        { key: 'spend', label: 'Purchase / repair spend', width: '180px', render: (metric) => `₹${metric.purchaseSpend.toLocaleString('en-IN')} / ₹${metric.repairSpend.toLocaleString('en-IN')}` }, { key: 'service', label: 'Receipts / repairs', width: '150px', render: (metric) => `${metric.receipts} / ${metric.repairJobs}` }, { key: 'sla', label: 'Avg TAT / overdue', width: '150px', render: (metric) => `${metric.averageTurnaround || '—'} days / ${metric.overdueRepairs}` }, { key: 'quality', label: 'Acceptance / claims', width: '170px', render: (metric) => `${metric.acceptedRate}% / ${metric.claimResolutionRate}%` }, { key: 'score', label: 'Score', width: '120px', render: (metric) => <strong className={`vendor-score ${metric.score >= 70 ? 'good' : metric.score >= 50 ? 'warn' : 'poor'}`}>{metric.score}/100</strong> }, { key: 'suggested', label: 'Suggested class', width: '140px', render: (metric) => metric.suggestedClass }, { key: 'action', label: 'Evaluation', width: '120px', render: (metric) => <button type="button" className="table-action" onClick={() => setEvaluationVendorId(metric.vendor.id)}>Review</button> },
+      ]} empty={<div className="empty-state"><strong>No vendor performance data</strong></div>} />{selectedEvaluation && <div className="vendor-evaluation-actions"><div><strong>{selectedEvaluation.vendor.name}</strong><span>Internal score {selectedEvaluation.score}/100 · suggested {selectedEvaluation.suggestedClass}</span></div><div><button type="button" onClick={() => setEvaluationVendorId('')}>Close</button><button type="button" className="primary-action" onClick={() => window.print()}>Print evaluation</button></div></div>}</section>}
       {showHistory && <DataTable rows={[...audit.events].filter((event) => event.module === tab).reverse()} rowKey={(event) => event.id} columns={[{ key: 'time', label: 'Timestamp', sticky: true, width: '190px', render: (event) => new Date(event.timestamp).toLocaleString('en-IN') }, { key: 'record', label: 'Record', width: '160px', render: (event) => event.recordCode }, { key: 'action', label: 'Action', width: '130px', render: (event) => event.action }, { key: 'fields', label: 'Changed fields', width: '360px', render: (event) => event.changedFields }, { key: 'actor', label: 'Changed by', width: '220px', render: (event) => event.actor }]} empty={<div className="empty-state"><span>◷</span><strong>No edit history</strong><p>Future changes to this master will be recorded here.</p></div>} />}
     </section>
+    {selectedEvaluation && <article className="vendor-evaluation-print"><header><div className="print-brand"><strong>GLASSCO</strong><span>CONNECT · ITMS</span></div><span>CONTROLLED INTERNAL RECORD</span></header><h1>Vendor Performance Evaluation</h1><div className="print-meta"><p><span>Vendor</span><b>{selectedEvaluation.vendor.name}</b></p><p><span>Vendor code</span><b>{selectedEvaluation.vendor.code}</b></p><p><span>GST</span><b>{selectedEvaluation.vendor.gst || 'Not recorded'}</b></p><p><span>Evaluation date</span><b>{new Date().toLocaleDateString('en-IN')}</b></p><p><span>Governed classification</span><b>{selectedEvaluation.vendor.performanceStatus ?? 'Approved'}</b></p><p><span>System suggestion</span><b>{selectedEvaluation.suggestedClass}</b></p></div><table><thead><tr><th>Performance measure</th><th>Result</th></tr></thead><tbody><tr><td>Composite service score</td><td>{selectedEvaluation.score}/100</td></tr><tr><td>Purchase spend</td><td>₹{selectedEvaluation.purchaseSpend.toLocaleString('en-IN')}</td></tr><tr><td>Repair spend</td><td>₹{selectedEvaluation.repairSpend.toLocaleString('en-IN')}</td></tr><tr><td>Accepted receipts</td><td>{selectedEvaluation.acceptedRate}% across {selectedEvaluation.receipts} receipt(s)</td></tr><tr><td>Repair turnaround</td><td>{selectedEvaluation.averageTurnaround || 'No completed repair'} days average; {selectedEvaluation.overdueRepairs} overdue</td></tr><tr><td>Warranty resolution</td><td>{selectedEvaluation.claimResolutionRate}%</td></tr></tbody></table><section className="print-declaration"><b>Evaluation basis</b><p>This internal evaluation is generated from current controlled ITMS records. Classification remains a management decision and does not constitute external certification.</p></section><div className="signature-grid"><div><i></i><b>IT Asset Manager</b><small>Date</small></div><div><i></i><b>IT Head</b><small>Date</small></div></div><footer>Glassco CONNECT ITMS · Vendor performance and service control</footer></article>}
   </>
 }
