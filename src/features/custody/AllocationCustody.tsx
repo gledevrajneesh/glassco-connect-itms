@@ -6,12 +6,13 @@ import { deriveCustody, type CustodyMovement } from '../../lib/custodyLifecycle'
 import EmployeeLifecycle from './EmployeeLifecycle'
 import LifecycleIntegrity from './LifecycleIntegrity'
 import DataTable from '../../components/DataTable'
+import Icon, { type IconName } from '../../components/Icon'
 import { canDo, type RoleId } from '../../lib/accessControl'
 
 type Status = 'Active' | 'Inactive'
 type Department = { id: string; code: string; name: string; status: Status }
 type User = { id: string; employeeCode: string; name: string; email: string; departmentId: string; status: Status }
-type Asset = { id: string; assetId: string; modelId: string; serialNumber: string; stockStatus: string }
+type Asset = { id: string; assetId: string; modelId: string; serialNumber: string; stockStatus: string; iconName?: IconName }
 type AssetType = { id: string; code: string; name: string; status: Status }
 type Model = { id: string; brand: string; name: string; typeId: string }
 type ApprovalState = 'Pending Asset Manager' | 'Pending IT Head' | 'Active custody' | 'Cancelled' | 'Closed - offboarded' | 'Closed - replaced'
@@ -121,7 +122,7 @@ export default function AllocationCustody() {
         <label>Allocation date<input required type="date" value={form.allocationDate} onChange={(event) => setForm({ ...form, allocationDate: event.target.value })} /></label>
         <label>Expected return date<input type="date" min={form.allocationDate} value={form.expectedReturnDate} onChange={(event) => setForm({ ...form, expectedReturnDate: event.target.value })} /></label>
         <label className="wide-field">Business purpose<textarea required value={form.purpose} onChange={(event) => setForm({ ...form, purpose: event.target.value })} placeholder="Role requirement, onboarding, replacement or temporary allocation" /></label>
-        {categoryId && <fieldset className="asset-picker"><legend>Items to allocate <span>{form.assetIds.length} selected</span></legend>{categoryAssets.length ? categoryAssets.map((asset) => <label key={asset.id}><input type="checkbox" checked={form.assetIds.includes(asset.id)} onChange={() => toggleAsset(asset.id)} /><span>{assetLabel(asset)}</span></label>) : <p>No eligible in-stock items are available in this category.</p>}</fieldset>}
+        {categoryId && <fieldset className="asset-picker"><legend>Items to allocate <span>{form.assetIds.length} selected</span></legend>{categoryAssets.length ? categoryAssets.map((asset) => <label key={asset.id}><input type="checkbox" checked={form.assetIds.includes(asset.id)} onChange={() => toggleAsset(asset.id)} /><Icon name={asset.iconName??'package'} size={21}/><span>{assetLabel(asset)}</span></label>) : <p>No eligible in-stock items are available in this category.</p>}</fieldset>}
         <div className="approval-preview"><strong>Approval route</strong><span>1. IT Asset Manager</span><span>2. IT Head</span><span>3. Custody becomes active</span></div>
         <div className="form-actions"><button type="button" onClick={closeForm}>Cancel</button><button type="submit" className="primary-action" disabled={form.assetIds.length === 0}>Submit allocation</button></div>
       </form>}
