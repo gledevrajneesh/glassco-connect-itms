@@ -61,6 +61,8 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
   const [receiptForm, setReceiptForm] = useState(newReceipt)
   const [receiptLines, setReceiptLines] = useState<ReceiptLineDraft[]>([blankReceiptLine()])
   const [assetForm, setAssetForm] = useState(newAsset)
+  const [registrationQuantity, setRegistrationQuantity] = useState('1')
+  const [serialNumbers, setSerialNumbers] = useState('')
   const [billFile,setBillFile]=useState<File|null>(null)
 
   useEffect(() => {
@@ -84,6 +86,7 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
   const selectedReceiptLine = selectedReceipt ? receiptLinesFor(selectedReceipt).find((line) => line.id === assetForm.receiptLineId) : undefined
   const selectedType = types.find((item) => item.id === selectedReceiptLine?.typeId)
   const registeredForSelected = selectedReceipt && selectedReceiptLine ? assets.filter((asset) => asset.receiptId === selectedReceipt.id && (asset.receiptLineId ?? 'legacy') === selectedReceiptLine.id).length : 0
+  const remainingForSelected = selectedReceiptLine ? Math.max(0, selectedReceiptLine.quantity - registeredForSelected) : 0
   const assetStatuses = [...new Set(assets.map((asset) => asset.stockStatus))].sort()
   const filteredAssets = useMemo(() => {
     const query = assetSearch.trim().toLowerCase()
@@ -112,7 +115,7 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
   }
 
   function nextCode(prefix: string, count: number) { return `${prefix}-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}` }
-  function closeForm() { setFormOpen(false);setReceiptForm(newReceipt);setReceiptLines([blankReceiptLine()]);setAssetForm(newAsset);setBillFile(null) }
+  function closeForm() { setFormOpen(false);setReceiptForm(newReceipt);setReceiptLines([blankReceiptLine()]);setAssetForm(newAsset);setRegistrationQuantity('1');setSerialNumbers('');setBillFile(null) }
 
   async function saveReceipt(event: FormEvent) {
     event.preventDefault()
@@ -131,9 +134,15 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
   function saveAsset(event: FormEvent) {
     event.preventDefault()
     if (!selectedReceipt || !selectedReceiptLine || selectedReceipt.outcome !== 'Accepted' || registeredForSelected >= selectedReceiptLine.quantity) return
-    const asset: Asset = { id: `asset-${crypto.randomUUID()}`, assetId: nextCode('GL-IT', assets.length), receiptId: selectedReceipt.id, receiptLineId: selectedReceiptLine.id, typeId: selectedReceiptLine.typeId, modelId: selectedReceiptLine.modelId, serialNumber: assetForm.serialNumber.trim(), locationId: assetForm.locationId, configId: assetForm.configId,iconName:assetForm.iconName, purchaseDate: assetForm.purchaseDate, cost: Number(assetForm.cost), condition: assetForm.condition, stockStatus: assetForm.stockStatus, createdAt: new Date().toISOString() }
-    setAssets((current) => [...current, asset])
-    setMessage(`${asset.assetId} created and placed in stock.`)
+    const quantity = Math.min(Number(registrationQuantity), remainingForSelected)
+    const serials = serialNumbers.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+    if (!Number.isInteger(quantity) || quantity < 1) { setMessage('Enter a valid number of units to register.'); return }
+    if (selectedType?.trackingMode !== 'Consumable' && serials.length !== quantity) { setMessage(`Enter exactly ${quantity} serial number${quantity === 1 ? '' : 's'}, one per line.`); return }
+    if (new Set(serials.map((item) => item.toLowerCase())).size !== serials.length || serials.some((serial) => assets.some((asset) => asset.serialNumber.toLowerCase() === serial.toLowerCase()))) { setMessage('Serial numbers must be unique and must not already exist in the asset register.'); return }
+    const createdAt = new Date().toISOString()
+    const created: Asset[] = Array.from({ length: quantity }, (_, index) => ({ id: `asset-${crypto.randomUUID()}`, assetId: nextCode('GL-IT', assets.length + index), receiptId: selectedReceipt.id, receiptLineId: selectedReceiptLine.id, typeId: selectedReceiptLine.typeId, modelId: selectedReceiptLine.modelId, serialNumber: serials[index] ?? assetForm.serialNumber.trim(), locationId: assetForm.locationId, configId: assetForm.configId,iconName:assetForm.iconName, purchaseDate: assetForm.purchaseDate, cost: Number(assetForm.cost), condition: assetForm.condition, stockStatus: assetForm.stockStatus, createdAt }))
+    setAssets((current) => [...current, ...created])
+    setMessage(`${created.length} asset${created.length === 1 ? '' : 's'} created: ${created[0].assetId}${created.length > 1 ? ` to ${created.at(-1)?.assetId}` : ''}.`)
     closeForm()
   }
 
@@ -155,7 +164,8 @@ export default function InventoryOperations({ mode }: { mode: 'Goods receipt' | 
 
     {formOpen && mode === 'Asset register' && <form className="master-form operation-form" onSubmit={saveAsset}>
       <label>Accepted receipt line<select required value={assetForm.receiptId && assetForm.receiptLineId ? `${assetForm.receiptId}|${assetForm.receiptLineId}` : ''} onChange={(event)=>{const [receiptId, receiptLineId] = event.target.value.split('|'); const entry=acceptedReceiptLines.find((item)=>item.receipt.id===receiptId&&item.line.id===receiptLineId);setAssetForm({...assetForm,receiptId,receiptLineId,configId:'',iconName:suggestedIcon(types.find((item)=>item.id===entry?.line.typeId))})}}><option value="">Select GRN line</option>{acceptedReceiptLines.map(({ receipt, line }) => <option value={`${receipt.id}|${line.id}`} key={`${receipt.id}-${line.id}`}>{receipt.grn} · {models.find((model) => model.id === line.modelId)?.name ?? 'Model'} · {assets.filter((asset) => asset.receiptId === receipt.id && (asset.receiptLineId ?? 'legacy') === line.id).length}/{line.quantity} registered</option>)}</select></label>
-      <label>Serial number<input required={selectedType?.trackingMode !== 'Consumable'} value={assetForm.serialNumber} onChange={(event) => setAssetForm({ ...assetForm, serialNumber: event.target.value })} placeholder={selectedType?.trackingMode === 'Consumable' ? 'Optional for consumable' : 'Manufacturer serial number'} /></label>
+      <label>Units to register<input required type="number" min="1" max={remainingForSelected || 1} value={registrationQuantity} onChange={(event) => setRegistrationQuantity(event.target.value)} /><small>{selectedReceiptLine ? `${remainingForSelected} unit${remainingForSelected === 1 ? '' : 's'} remaining on this GRN line` : 'Select a GRN line first'}</small></label>
+      <label className="wide-field">Serial numbers<textarea required={selectedType?.trackingMode !== 'Consumable'} value={serialNumbers} onChange={(event) => setSerialNumbers(event.target.value)} placeholder={selectedType?.trackingMode === 'Consumable' ? 'Optional for consumables' : 'Enter one manufacturer serial number per line'} /></label>
       <label>Stock location<select required value={assetForm.locationId} onChange={(event) => setAssetForm({ ...assetForm, locationId: event.target.value })}><option value="">Select location</option>{locations.filter((item) => item.status === 'Active').map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label>
       <label>Configuration profile<select value={assetForm.configId} onChange={(event) => setAssetForm({ ...assetForm, configId: event.target.value })}><option value="">No configuration profile</option>{profiles.filter((item) => item.status === 'Active' && item.typeId === selectedReceiptLine?.typeId).map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label>
       <label>Purchase date<input required type="date" value={assetForm.purchaseDate} onChange={(event) => setAssetForm({ ...assetForm, purchaseDate: event.target.value })} /></label>
