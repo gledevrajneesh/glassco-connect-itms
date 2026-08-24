@@ -17,22 +17,23 @@ const applications: PlatformApp[] = [
   { id: 'visitors', name: 'Visitor Management', description: 'Visitor approvals and controlled entry.', shortName: 'VMS', icon: 'visitor', state: 'planned' },
 ]
 
-export default function AppLauncher({ onOpen }: { onOpen: (appId: string) => void }) {
+export default function AppLauncher({ onOpen, identityEmail, identityName }: { onOpen: (appId: string) => void; identityEmail: string; identityName: string }) {
   const authorized = applications.filter((app) => app.state === 'authorized')
   const otherApps = applications.filter((app) => app.state !== 'authorized')
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const initials = identityName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
 
   return (
     <main className="launcher-main">
       <section className="launcher-hero">
         <div className="launcher-hero-copy">
           <span className="launcher-kicker">GLASSCO CONNECT</span>
-          <h1>{greeting}, Development User.</h1>
+          <h1>{greeting}, {identityName}.</h1>
           <p>Your secure workspace for communication, coordination and controlled business operations.</p>
           <div className="launcher-trust-row"><span><Icon name="assurance" size={17}/> Company workspace</span><span><Icon name="check" size={17}/> Authorised access</span></div>
         </div>
-        <div className="identity-card"><span className="identity-avatar">DG</span><div><small>Signed in as</small><strong>Development User</strong><span>dev@glasscolabs.com</span></div><span className="identity-status">ACTIVE</span></div>
+        <div className="identity-card"><span className="identity-avatar">{initials}</span><div><small>Signed in as</small><strong>{identityName}</strong><span>{identityEmail}</span></div><span className="identity-status">ACTIVE</span></div>
       </section>
 
       <section className="authorized-section">

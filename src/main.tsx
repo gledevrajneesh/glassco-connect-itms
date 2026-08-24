@@ -6,6 +6,6 @@ import AuthGate from './features/auth/AuthGate.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthGate>{(identityEmail, logout) => <App identityEmail={identityEmail} logout={logout} />}</AuthGate>
+    <AuthGate>{(identityEmail, logout, access) => <App identityEmail={identityEmail} logout={logout} access={access} />}</AuthGate>
   </StrictMode>,
 )

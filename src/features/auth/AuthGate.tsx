@@ -1,19 +1,37 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { GoogleAuthProvider, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut, type User } from 'firebase/auth'
 import { firebaseAuth, isFirebaseEnabled } from '../../lib/firebase'
-import { hasCentralAccess } from '../../lib/centralAccess'
+import { getCentralAssignment, saveCentralAssignment, type CentralAccessAssignment } from '../../lib/centralAccess'
 import './AuthGate.css'
 
 type AuthGateProps = {
-  children: (identityEmail: string, logout: (() => Promise<void>) | null) => ReactNode
+  children: (identityEmail: string, logout: (() => Promise<void>) | null, access: CentralAccessAssignment) => ReactNode
 }
 
 const bootstrapAdministrators = ['dev@glasscolabs.com']
 
-async function hasActiveItmsAccess(email: string) {
+const bootstrapAccess: CentralAccessAssignment = { id: 'dev', name: 'Development Administrator', email: 'dev@glasscolabs.com', roleId: 'administrator', roleIds: ['administrator'], status: 'Active', updatedAt: new Date().toISOString(), updatedBy: 'System bootstrap' }
+
+function localAssignments() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('itms.access-assignments.v1') || '[]') as CentralAccessAssignment[]
+    return stored.filter((record) => record.email?.toLowerCase().endsWith('@glasscolabs.com') && record.roleId && record.status)
+  } catch { return [] }
+}
+
+async function resolveActiveItmsAccess(email: string) {
   const normalized = email.trim().toLowerCase()
-  if (bootstrapAdministrators.includes(normalized)) return true
-  try { return await hasCentralAccess(normalized) } catch { return false }
+  if (bootstrapAdministrators.includes(normalized)) {
+    try {
+      await saveCentralAssignment(bootstrapAccess)
+      await Promise.all(localAssignments().map((assignment) => saveCentralAssignment({ ...assignment, email: assignment.email.toLowerCase() })))
+    } catch {
+      // The bootstrap administrator must remain able to repair central access
+      // if Firestore is temporarily unavailable or an older rule is still live.
+    }
+    return bootstrapAccess
+  }
+  try { const assignment = await getCentralAssignment(normalized); return assignment?.status === 'Active' ? assignment : null } catch { return null }
 }
 
 function isGlasscoWorkspaceAccount(email: string) {
@@ -22,6 +40,7 @@ function isGlasscoWorkspaceAccount(email: string) {
 
 export default function AuthGate({ children }: AuthGateProps) {
   const [user, setUser] = useState<User | null>(null)
+  const [access, setAccess] = useState<CentralAccessAssignment | null>(null)
   const [checking, setChecking] = useState(isFirebaseEnabled)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -34,19 +53,20 @@ export default function AuthGate({ children }: AuthGateProps) {
     if (!configuredAuth) return
     return onAuthStateChanged(configuredAuth, async (nextUser) => {
       const authenticatedEmail = nextUser?.email || ''
-      if (nextUser && (!isGlasscoWorkspaceAccount(authenticatedEmail) || !(await hasActiveItmsAccess(authenticatedEmail)))) {
+      const resolvedAccess = nextUser && isGlasscoWorkspaceAccount(authenticatedEmail) ? await resolveActiveItmsAccess(authenticatedEmail) : null
+      if (nextUser && !resolvedAccess) {
         await signOut(configuredAuth)
         setError('Your Google account is valid, but active ITMS access has not been assigned by an administrator.')
-        setUser(null)
-      } else setUser(nextUser)
+        setUser(null);setAccess(null)
+      } else { setUser(nextUser);setAccess(resolvedAccess) }
       setChecking(false)
     })
   }, [])
 
-  if (!isFirebaseEnabled || !firebaseAuth) return children('dev@glasscolabs.com', null)
+  if (!isFirebaseEnabled || !firebaseAuth) return children('dev@glasscolabs.com', null, bootstrapAccess)
   const activeAuth = firebaseAuth
   if (checking) return <div className="auth-loading">Verifying secure ITMS session…</div>
-  if (user) return children(user.email || 'Authenticated user', () => signOut(activeAuth))
+  if (user && access) return children(user.email || 'Authenticated user', () => signOut(activeAuth), access)
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()

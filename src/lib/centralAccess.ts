@@ -27,9 +27,13 @@ export type CentralAccessEvent = {
 export const accessDocumentId = (email: string) => email.trim().toLowerCase()
 
 export async function hasCentralAccess(email: string) {
-  if (!firestore) return false
+  return (await getCentralAssignment(email))?.status === 'Active'
+}
+
+export async function getCentralAssignment(email: string) {
+  if (!firestore) return null
   const snapshot = await getDoc(doc(firestore, 'accessAssignments', accessDocumentId(email)))
-  return snapshot.exists() && snapshot.data().status === 'Active'
+  return snapshot.exists() ? ({ ...snapshot.data(), id: snapshot.data().id || snapshot.id } as CentralAccessAssignment) : null
 }
 
 export async function loadCentralAssignments() {
