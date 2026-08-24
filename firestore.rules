@@ -14,14 +14,47 @@ service cloud.firestore {
       return signedIn() && email() == 'dev@glasscolabs.com';
     }
 
+    function assignment() {
+      return get(/databases/$(database)/documents/accessAssignments/$(email())).data;
+    }
+
+    function activeUser() {
+      return signedIn() && assignment().status == 'Active';
+    }
+
+    function hasRole(role) {
+      return activeUser() && (assignment().roleId == role || (assignment().roleIds is list && role in assignment().roleIds));
+    }
+
+    function operationalReader() {
+      return isAdministrator() || hasRole('administrator') || hasRole('asset-manager') || hasRole('it-head') || hasRole('auditor') || hasRole('department-manager');
+    }
+
+    function operationalEditor() {
+      return isAdministrator() || hasRole('administrator') || hasRole('asset-manager') || hasRole('it-head');
+    }
+
     match /accessAssignments/{principalEmail} {
       allow get: if signedIn() && (email() == principalEmail || isAdministrator());
       allow list, create, update, delete: if isAdministrator();
     }
 
     match /accessEvents/{eventId} {
-      allow read, create, update: if isAdministrator();
+      allow read, create: if isAdministrator();
+      allow update: if false;
       allow delete: if false;
+    }
+
+    match /operationalStores/{storeId} {
+      allow read: if operationalReader();
+      allow create, update: if isAdministrator() || hasRole('administrator');
+      allow delete: if false;
+
+      match /records/{recordId} {
+        allow read: if operationalReader();
+        allow create, update: if operationalEditor();
+        allow delete: if false;
+      }
     }
 
     match /{document=**} {

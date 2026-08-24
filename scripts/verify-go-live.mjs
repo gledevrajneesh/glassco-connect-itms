@@ -28,6 +28,8 @@ check('Baseline Hosting security headers exist', ['X-Content-Type-Options', 'Ref
 check('Firestore defaults to deny', rules.includes('match /{document=**}') && rules.includes('allow read, write: if false'), 'Unmatched documents must remain inaccessible.')
 check('Access assignments are identity-scoped', rules.includes('match /accessAssignments/{principalEmail}') && rules.includes('email() == principalEmail'), 'Users may read only their own access assignment; administrators govern the register.')
 check('Access events are append-preserved', rules.includes('match /accessEvents/{eventId}') && rules.includes('allow delete: if false'), 'Access-governance history must not be deletable.')
+check('Operational stores are role governed', rules.includes('match /operationalStores/{storeId}') && rules.includes("hasRole('auditor')") && rules.includes('allow create, update: if operationalEditor()'), 'Operational records require an active governed role.')
+check('Operational deletion is prohibited', rules.includes('match /records/{recordId}') && rules.includes('allow delete: if false'), 'First-stage cloud synchronization must never delete operational documents.')
 check('Credential files are ignored', gitignore.includes('.env.*') && gitignore.includes('!.env.example') && gitignore.includes('.firebase/'), 'Local configuration and Firebase cache files must not enter Git.')
 check('Firebase SDK is pinned in dependencies', Boolean(packageJson.dependencies?.firebase), 'The authenticated build requires the Firebase Web SDK.')
 
