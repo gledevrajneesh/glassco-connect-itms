@@ -1,22 +1,19 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { GoogleAuthProvider, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut, type User } from 'firebase/auth'
 import { firebaseAuth, isFirebaseEnabled } from '../../lib/firebase'
+import { hasCentralAccess } from '../../lib/centralAccess'
 import './AuthGate.css'
 
 type AuthGateProps = {
   children: (identityEmail: string, logout: (() => Promise<void>) | null) => ReactNode
 }
 
-type LocalAccessRecord = { email?: string; status?: string }
 const bootstrapAdministrators = ['dev@glasscolabs.com']
 
-function hasActiveItmsAccess(email: string) {
+async function hasActiveItmsAccess(email: string) {
   const normalized = email.trim().toLowerCase()
-  try {
-    const stored = localStorage.getItem('itms.access-assignments.v1')
-    if (stored) return (JSON.parse(stored) as LocalAccessRecord[]).some((record) => record.email?.toLowerCase() === normalized && record.status === 'Active')
-  } catch { /* Fall through to the controlled bootstrap account. */ }
-  return bootstrapAdministrators.includes(normalized)
+  if (bootstrapAdministrators.includes(normalized)) return true
+  try { return await hasCentralAccess(normalized) } catch { return false }
 }
 
 function isGlasscoWorkspaceAccount(email: string) {
@@ -37,7 +34,7 @@ export default function AuthGate({ children }: AuthGateProps) {
     if (!configuredAuth) return
     return onAuthStateChanged(configuredAuth, async (nextUser) => {
       const authenticatedEmail = nextUser?.email || ''
-      if (nextUser && (!isGlasscoWorkspaceAccount(authenticatedEmail) || !hasActiveItmsAccess(authenticatedEmail))) {
+      if (nextUser && (!isGlasscoWorkspaceAccount(authenticatedEmail) || !(await hasActiveItmsAccess(authenticatedEmail)))) {
         await signOut(configuredAuth)
         setError('Your Google account is valid, but active ITMS access has not been assigned by an administrator.')
         setUser(null)

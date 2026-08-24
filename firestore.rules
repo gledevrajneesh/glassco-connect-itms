@@ -1,0 +1,31 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null && request.auth.token.email is string;
+    }
+
+    function email() {
+      return request.auth.token.email.lower();
+    }
+
+    function isAdministrator() {
+      return signedIn() && email() == 'dev@glasscolabs.com';
+    }
+
+    match /accessAssignments/{principalEmail} {
+      allow get: if signedIn() && (email() == principalEmail || isAdministrator());
+      allow list, create, update, delete: if isAdministrator();
+    }
+
+    match /accessEvents/{eventId} {
+      allow read, create, update: if isAdministrator();
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
