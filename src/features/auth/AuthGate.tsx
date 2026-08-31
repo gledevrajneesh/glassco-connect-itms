@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { GoogleAuthProvider, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithRedirect, signOut, type User } from 'firebase/auth'
+import { GoogleAuthProvider, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut, type User } from 'firebase/auth'
 import { firebaseAuth, isFirebaseEnabled } from '../../lib/firebase'
 import { getCentralAssignment, saveCentralAssignment, type CentralAccessAssignment } from '../../lib/centralAccess'
 import './AuthGate.css'
@@ -94,7 +94,7 @@ export default function AuthGate({ children }: AuthGateProps) {
     try {
       const provider = new GoogleAuthProvider()
       provider.setCustomParameters({ hd: 'glasscolabs.com', prompt: 'select_account' })
-      await signInWithRedirect(activeAuth, provider)
+      await signInWithPopup(activeAuth, provider)
     } catch {
       setError('Google Workspace sign-in did not complete. Select an authorised @glasscolabs.com account and try again.')
     } finally { setBusy(false) }
