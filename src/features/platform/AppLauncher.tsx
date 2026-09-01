@@ -17,9 +17,10 @@ const applications: PlatformApp[] = [
   { id: 'visitors', name: 'Visitor Management', description: 'Visitor approvals and controlled entry.', shortName: 'VMS', icon: 'visitor', state: 'planned' },
 ]
 
-export default function AppLauncher({ onOpen, identityEmail, identityName }: { onOpen: (appId: string) => void; identityEmail: string; identityName: string }) {
-  const authorized = applications.filter((app) => app.state === 'authorized')
-  const otherApps = applications.filter((app) => app.state !== 'authorized')
+export default function AppLauncher({ onOpen, identityEmail, identityName, itmsAuthorized }: { onOpen: (appId: string) => void; identityEmail: string; identityName: string; itmsAuthorized: boolean }) {
+  const availableApplications=applications.map(app=>app.id==='itms'?{...app,state:itmsAuthorized?'authorized' as const:'no-access' as const}:app)
+  const authorized = availableApplications.filter((app) => app.state === 'authorized')
+  const otherApps = availableApplications.filter((app) => app.state !== 'authorized')
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const initials = identityName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()

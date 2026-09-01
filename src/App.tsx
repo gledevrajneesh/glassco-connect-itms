@@ -19,16 +19,19 @@ import type { CentralAccessAssignment } from './lib/centralAccess'
 
 const navItems:ModuleName[] = ['Dashboard','Operations Centre', 'Shared Masters', 'Asset Inventory', 'Allocation & Custody', 'Maintenance & Inspection', 'Assurance & Controls', 'Asset Retirement & Circularity', 'Reports & Analytics','Access & Roles']
 const iconByModule:Record<ModuleName,IconName> = {Dashboard:'dashboard','Operations Centre':'support','Shared Masters':'masters','Asset Inventory':'inventory','Allocation & Custody':'allocation','Maintenance & Inspection':'maintenance','Assurance & Controls':'assurance','Asset Retirement & Circularity':'history','Reports & Analytics':'reports','Access & Roles':'assurance'}
+const rolePriority:Record<RoleId,number>={administrator:0,'asset-manager':1,'it-head':2,auditor:3,'department-manager':4,'standard-user':5}
 
 function App({identityEmail,logout,access}:{identityEmail:string;logout:(()=>Promise<void>)|null;access:CentralAccessAssignment}) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [section, setSection] = useState('Dashboard')
   const [activeApp, setActiveApp] = useState<string | null>(null)
-  const assignedRoles=(access.roleIds?.length?access.roleIds:[access.roleId]) as RoleId[]
+  const assignedRoles=([...(access.roleIds?.length?access.roleIds:[access.roleId])] as RoleId[]).sort((left,right)=>rolePriority[left]-rolePriority[right])
   const [activeRole,setActiveRole]=useState<RoleId>(assignedRoles[0])
   const permittedItems=navItems.filter(item=>canOpen(activeRole,item))
   function navigate(target:string,focus?:string){const module=target as ModuleName;if(canOpen(activeRole,module)){if(focus)localStorage.setItem('itms.navigation-focus.v1',JSON.stringify({module,focus,at:new Date().toISOString()}));setSection(module);setMenuOpen(false)}}
-  function switchRole(role:RoleId){setActiveRole(role);if(!canOpen(role,section as ModuleName))setSection('Dashboard')}
+  function firstPermitted(role:RoleId){return navItems.find(item=>canOpen(role,item))}
+  function switchRole(role:RoleId){setActiveRole(role);if(!canOpen(role,section as ModuleName)){const first=firstPermitted(role);if(first)setSection(first);else setActiveApp(null)}}
+  function openApplication(appId:string){const first=firstPermitted(activeRole);if(appId==='itms'&&first){setSection(first);setActiveApp(appId);setMenuOpen(false)}}
 
   return (
     <div className="app-shell">
@@ -49,7 +52,7 @@ function App({identityEmail,logout,access}:{identityEmail:string;logout:(()=>Pro
         {logout&&<button type="button" className="all-apps" onClick={()=>void logout()}>Sign out</button>}
       </header>
 
-      {!activeApp ? <AppLauncher onOpen={setActiveApp} identityEmail={identityEmail} identityName={access.name} /> : <div className="body-layout">
+      {!activeApp ? <AppLauncher onOpen={openApplication} identityEmail={identityEmail} identityName={access.name} itmsAuthorized={permittedItems.length>0} /> : <div className="body-layout">
         <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
           <div className="sidebar-label">IT Asset Lifecycle</div>
           <nav aria-label="Primary navigation">
