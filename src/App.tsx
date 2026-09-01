@@ -67,7 +67,7 @@ function App({identityEmail,logout,access}:{identityEmail:string;logout:(()=>Pro
             : section === 'Assurance & Controls' ? <AssuranceWorkspace />
             : section === 'Asset Retirement & Circularity' ? <RetirementWorkspace />
             : section === 'Reports & Analytics' ? <ReportsWorkspace />
-            : section === 'Access & Roles' ? <AccessGovernance activeRole={activeRole}/>
+            : section === 'Access & Roles' ? <AccessGovernance activeRole={activeRole} identityEmail={identityEmail}/>
             : <CommandDashboard onNavigate={navigate}/>}
         </main>
       </div>}
