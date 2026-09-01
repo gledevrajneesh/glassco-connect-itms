@@ -11,6 +11,10 @@ type AuthGateProps = {
 const bootstrapAdministrators = ['dev@glasscolabs.com']
 
 const bootstrapAccess: CentralAccessAssignment = { id: 'dev', name: 'Development Administrator', email: 'dev@glasscolabs.com', roleId: 'administrator', roleIds: ['administrator'], status: 'Active', updatedAt: new Date().toISOString(), updatedBy: 'System bootstrap' }
+const approvedStandardUsers: CentralAccessAssignment[] = [
+  { id: 'bootstrap-sanjay', name: 'Sanjay', email: 'sanjay@glasscolabs.com', roleId: 'standard-user', roleIds: ['standard-user'], status: 'Active', updatedAt: new Date().toISOString(), updatedBy: 'dev@glasscolabs.com' },
+  { id: 'bootstrap-vikas', name: 'Vikas', email: 'vikas@glasscolabs.com', roleId: 'standard-user', roleIds: ['standard-user'], status: 'Active', updatedAt: new Date().toISOString(), updatedBy: 'dev@glasscolabs.com' },
+]
 
 function localAssignments() {
   try {
@@ -25,6 +29,7 @@ async function resolveActiveItmsAccess(email: string) {
     try {
       await saveCentralAssignment(bootstrapAccess)
       await Promise.all(localAssignments().map((assignment) => saveCentralAssignment({ ...assignment, email: assignment.email.toLowerCase() })))
+      await Promise.all(approvedStandardUsers.map((assignment) => saveCentralAssignment(assignment)))
     } catch {
       // The bootstrap administrator must remain able to repair central access
       // if Firestore is temporarily unavailable or an older rule is still live.
