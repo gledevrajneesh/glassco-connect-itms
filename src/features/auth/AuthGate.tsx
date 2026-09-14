@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { GoogleAuthProvider, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut, type User } from 'firebase/auth'
 import { firebaseAuth, isFirebaseEnabled } from '../../lib/firebase'
 import { getCentralAssignment, saveCentralAssignment, type CentralAccessAssignment } from '../../lib/centralAccess'
+import Icon from '../../components/Icon'
 import './AuthGate.css'
 
 type AuthGateProps = {
@@ -10,33 +11,19 @@ type AuthGateProps = {
 
 const bootstrapAdministrators = ['dev@glasscolabs.com']
 
-const bootstrapAccess: CentralAccessAssignment = { id: 'dev', name: 'Development Administrator', email: 'dev@glasscolabs.com', roleId: 'administrator', roleIds: ['administrator'], status: 'Active', updatedAt: new Date().toISOString(), updatedBy: 'System bootstrap' }
-const approvedStandardUsers: CentralAccessAssignment[] = [
-  { id: 'bootstrap-sanjay', name: 'Sanjay', email: 'sanjay@glasscolabs.com', roleId: 'standard-user', roleIds: ['standard-user'], status: 'Active', updatedAt: new Date().toISOString(), updatedBy: 'dev@glasscolabs.com' },
-  { id: 'bootstrap-vikas', name: 'Vikas', email: 'vikas@glasscolabs.com', roleId: 'standard-user', roleIds: ['standard-user'], status: 'Active', updatedAt: new Date().toISOString(), updatedBy: 'dev@glasscolabs.com' },
-]
-
-function localAssignments() {
-  try {
-    const stored = JSON.parse(localStorage.getItem('itms.access-assignments.v1') || '[]') as CentralAccessAssignment[]
-    return stored.filter((record) => record.email?.toLowerCase().endsWith('@glasscolabs.com') && record.roleId && record.status)
-  } catch { return [] }
-}
-
+const bootstrapAccess: CentralAccessAssignment = { id: 'dev', name: 'Development Administrator', email: 'dev@glasscolabs.com', roleId: 'administrator', roleIds: ['administrator'], appIds: ['itms', 'support'], status: 'Active', updatedAt: new Date().toISOString(), updatedBy: 'System bootstrap' }
 async function resolveActiveItmsAccess(email: string) {
   const normalized = email.trim().toLowerCase()
   if (bootstrapAdministrators.includes(normalized)) {
     try {
       await saveCentralAssignment(bootstrapAccess)
-      await Promise.all(localAssignments().map((assignment) => saveCentralAssignment({ ...assignment, email: assignment.email.toLowerCase() })))
-      await Promise.all(approvedStandardUsers.map((assignment) => saveCentralAssignment(assignment)))
     } catch {
       // The bootstrap administrator must remain able to repair central access
       // if Firestore is temporarily unavailable or an older rule is still live.
     }
     return bootstrapAccess
   }
-  try { const assignment = await getCentralAssignment(normalized); return assignment?.status === 'Active' ? assignment : null } catch { return null }
+  try { const assignment = await getCentralAssignment(normalized); return assignment?.status === 'Active' && assignment.employeeStatus !== 'Inactive' ? assignment : null } catch { return null }
 }
 
 function isGlasscoWorkspaceAccount(email: string) {
@@ -106,9 +93,12 @@ export default function AuthGate({ children }: AuthGateProps) {
   }
 
   return <main className="auth-page">
-    <section className="auth-card">
-      <div className="auth-brand"><span className="auth-bars"><i/><i/><i/><i/></span><div><strong>GLASSCO</strong><span>CONNECT · ITMS</span></div></div>
-      <div className="auth-copy"><span>SECURE COMPANY ACCESS</span><h1>Sign in to ITMS</h1><p>Use your authorised Glassco business account to continue.</p></div>
+    <section className="auth-introduction" aria-label="About Glassco Workspace">
+      <div className="auth-introduction-copy"><div className="auth-workspace-label"><strong>GLASSCO WORKSPACE</strong><b>|</b><span>CONNECTED OPERATIONS</span></div><h1>Glassco <em>Workspace</em></h1><p>One secure workspace for people, assets and service operations.</p><small>Connected tools that keep teams productive and operational information under control.</small></div>
+      <div className="auth-services" aria-label="Glassco Workspace services"><span><i><Icon name="inventory" size={21}/></i>IT Asset Management</span><span><i><Icon name="support" size={21}/></i>IT Support Desk</span><span><i><Icon name="assurance" size={21}/></i>Access Governance</span><span><i><Icon name="requests" size={21}/></i>Service Requests</span><span><i><Icon name="visitor" size={21}/></i>Visitor Management</span></div>
+    </section>
+    <section className="auth-login-area"><div className="auth-login-stack"><header className="auth-login-brand"><img src="https://glasscolabs.com/wp-content/uploads/2024/03/Glassco-logo.jpg" alt="Glassco — A Glass Apart"/></header><div className="auth-card">
+      <div className="auth-copy"><span>SECURE COMPANY ACCESS</span><h1>Sign in to Glassco Workspace</h1><p>Use your authorised Glassco business account to continue.</p></div>
       <div className="auth-sso"><button type="button" className="google-signin" disabled={busy} onClick={googleSignIn}><span>G</span>Continue with Google Workspace</button><p>Only active users listed in ITMS Access &amp; Roles are admitted.</p></div>
       <div className="auth-divider"><span>or use email and password</span></div>
       <form onSubmit={login}>
@@ -120,6 +110,6 @@ export default function AuthGate({ children }: AuthGateProps) {
         <button className="auth-link" type="button" disabled={busy} onClick={resetPassword}>Forgot password?</button>
       </form>
       <footer>Controlled access · Authorised users only</footer>
-    </section>
+    </div><footer className="auth-ownership"><strong>Developed and maintained by Department of IT</strong><span>Glassco Laboratory Equipments Pvt. Ltd. · Copyright © 2026</span><a href="mailto:dev@glasscolabs.com">Contact: dev@glasscolabs.com</a></footer></div></section>
   </main>
 }

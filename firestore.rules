@@ -30,12 +30,25 @@ service cloud.firestore {
       return activeUser() && (assignment().roleId == role || (assignment().roleIds is list && role in assignment().roleIds));
     }
 
+    function hasApp(app) {
+      return activeUser() && (!assignment().keys().hasAny(['appIds']) || (assignment().appIds is list && app in assignment().appIds));
+    }
+
     function operationalReader() {
-      return isAdministrator() || hasRole('administrator') || hasRole('asset-manager') || hasRole('it-head') || hasRole('auditor') || hasRole('department-manager');
+      return hasApp('itms') && (isAdministrator() || hasRole('administrator') || hasRole('asset-manager') || hasRole('it-head') || hasRole('auditor') || hasRole('department-manager'));
     }
 
     function operationalEditor() {
-      return isAdministrator() || hasRole('administrator') || hasRole('asset-manager') || hasRole('it-head');
+      return hasApp('itms') && (isAdministrator() || hasRole('administrator') || hasRole('asset-manager') || hasRole('it-head'));
+    }
+
+    function supportAgent() {
+      return hasApp('support') && (isAdministrator() || hasRole('administrator') || hasRole('asset-manager') || hasRole('it-head'));
+    }
+
+    function supportConfigurationStore(storeId) {
+      return storeId in ['supportCategories', 'supportCatalogue', 'supportTeams', 'supportRoutes', 'supportCodes',
+        'supportAdminAudit', 'supportKnowledge', 'supportTemplates', 'supportDeliveries', 'supportMailEvents'];
     }
 
     match /accessAssignments/{principalEmail} {
@@ -50,16 +63,205 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /userNotifications/{notificationId} {
+      allow read: if signedIn() && resource.data.recipientEmail == email();
+      allow create: if isAdministrator() || hasAdministratorRole();
+      allow update: if signedIn() && resource.data.recipientEmail == email()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt'])
+        && request.resource.data.readAt is string;
+      allow delete: if false;
+    }
+
     match /operationalStores/{storeId} {
-      allow read: if operationalReader();
-      allow create, update: if isAdministrator() || hasRole('administrator');
+      allow read: if operationalReader() || (supportConfigurationStore(storeId) && hasApp('support'));
+      allow create, update: if isAdministrator() || hasRole('administrator') || (supportConfigurationStore(storeId) && supportAgent());
       allow delete: if false;
 
       match /records/{recordId} {
-        allow read: if operationalReader();
-        allow create, update: if operationalEditor();
+        allow read: if operationalReader() || (supportConfigurationStore(storeId) && hasApp('support'));
+        allow create: if operationalEditor() || (supportConfigurationStore(storeId) && supportAgent())
+          || (storeId == 'supportDeliveries' && hasApp('support') && request.resource.data.recipient == email());
+        allow update: if operationalEditor() || (supportConfigurationStore(storeId) && supportAgent())
+          || (storeId == 'supportDeliveries' && hasApp('support')
+            && (request.resource.data.diff(resource.data).affectedKeys().size() == 0 || request.resource.data.recipient == email()))
+          || (storeId == 'supportKnowledge' && hasApp('support')
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views', 'helpful', 'notHelpful']));
         allow delete: if false;
       }
+    }
+
+    match /operationalValues/{valueId} {
+      allow read: if valueId in ['supportSlaPolicy', 'supportEmailConfiguration'] && hasApp('support');
+      allow create, update: if valueId in ['supportSlaPolicy', 'supportEmailConfiguration'] && supportAgent();
+      allow delete: if false;
+    }
+
+    match /supportEmailTickets/{ticketId} {
+      // Legacy ingestion collection: never expose the complete mailbox payload to employees.
+      allow read: if supportAgent();
+      allow write: if false;
+    }
+
+    function ownsTicket(data) {
+      return hasApp('support') && data.requesterEmail == email();
+    }
+
+    function employeeReply() {
+      let next = request.resource.data;
+      let previous = resource.data;
+      return next.diff(previous).affectedKeys().hasOnly(['messages', 'history', 'updatedAt'])
+        && next.messages.size() == previous.messages.size() + 1
+        && next.messages.removeAll([next.messages[next.messages.size() - 1]]) == previous.messages
+        && next.messages[next.messages.size() - 1].author == email()
+        && next.messages[next.messages.size() - 1].visibility == 'employee'
+        && next.messages[next.messages.size() - 1].body is string
+        && next.messages[next.messages.size() - 1].body.size() <= 10000;
+    }
+
+    match /supportTickets/{ticketId} {
+      allow read: if supportAgent() || ownsTicket(resource.data);
+      allow create: if (supportAgent() || ownsTicket(request.resource.data))
+        && request.resource.data.id == ticketId
+        && request.resource.data.messages == []
+        && request.resource.data.status in ['Open', 'Awaiting approval']
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.description is string;
+      allow update: if request.resource.data.requesterEmail == resource.data.requesterEmail
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.code == resource.data.code
+        && (supportAgent() || (ownsTicket(resource.data) && (employeeReply()
+          || (resource.data.status == 'Resolved' && request.resource.data.status == 'Open'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','resolutionSummary','updatedAt','history'])))));
+      allow delete: if false;
+    }
+
+    // A portal upload is staged here before the privileged mailbox bridge copies it
+    // to the Support Desk's private Google Drive folder.  The employee can only
+    // create an intake for one of their own tickets; no browser can alter an
+    // intake after it has been queued.
+    match /supportAttachmentIntakes/{intakeId} {
+      allow read: if supportAgent() || ownsTicket(resource.data);
+      allow create: if ownsTicket(request.resource.data)
+        && request.resource.data.keys().hasOnly([
+          'id', 'ticketId', 'ticketCode', 'requesterEmail', 'sourceDriveFileId',
+          'sourceMarker', 'name', 'contentType', 'size', 'source', 'status',
+          'createdAt', 'uploadedAt', 'uploadedBy'
+        ])
+        && request.resource.data.id == intakeId
+        && request.resource.data.ticketId is string
+        && request.resource.data.ticketId.size() > 0
+        && request.resource.data.ticketCode is string
+        && request.resource.data.ticketCode.size() > 0
+        && request.resource.data.requesterEmail == email()
+        && request.resource.data.uploadedBy == email()
+        && request.resource.data.sourceDriveFileId is string
+        && request.resource.data.sourceDriveFileId.size() > 0
+        && request.resource.data.sourceMarker is string
+        && request.resource.data.sourceMarker.size() > 0
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 180
+        && request.resource.data.contentType is string
+        && request.resource.data.contentType.size() <= 180
+        && request.resource.data.size is number
+        && request.resource.data.size > 0 && request.resource.data.size <= 15728640
+        && request.resource.data.source == 'Portal'
+        && request.resource.data.status == 'Queued'
+        && request.resource.data.createdAt is string
+        && request.resource.data.uploadedAt is string
+        && get(/databases/$(database)/documents/supportTickets/$(request.resource.data.ticketId)).data.requesterEmail == email()
+        && get(/databases/$(database)/documents/supportTickets/$(request.resource.data.ticketId)).data.code == request.resource.data.ticketCode;
+      allow update, delete: if false;
+    }
+
+    // GRN invoices and delivery evidence follow the same controlled Drive hand-off.
+    // An ITMS operator may queue an immutable source reference; the privileged
+    // mailbox bridge validates and copies the source into the private archive.
+    match /inventoryAttachmentIntakes/{intakeId} {
+      allow read: if operationalReader();
+      allow create: if operationalEditor()
+        && request.resource.data.keys().hasOnly([
+          'id', 'receiptId', 'grn', 'uploaderEmail', 'sourceDriveFileId',
+          'sourceMarker', 'name', 'contentType', 'size', 'source', 'status',
+          'createdAt', 'uploadedAt'
+        ])
+        && request.resource.data.id == intakeId
+        && request.resource.data.receiptId is string
+        && request.resource.data.grn is string
+        && request.resource.data.uploaderEmail == email()
+        && request.resource.data.sourceDriveFileId is string
+        && request.resource.data.sourceMarker is string
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 180
+        && request.resource.data.contentType is string
+        && request.resource.data.size is number
+        && request.resource.data.size > 0 && request.resource.data.size <= 15728640
+        && request.resource.data.source == 'GRN / portal'
+        && request.resource.data.status == 'Queued'
+        && request.resource.data.createdAt is string
+        && request.resource.data.uploadedAt is string
+        && get(/databases/$(database)/documents/operationalStores/receipts/records/$(request.resource.data.receiptId)).data.grn == request.resource.data.grn;
+      allow update, delete: if false;
+    }
+
+    match /supportPrivateNotes/{ticketId} {
+      allow read, create, update: if supportAgent();
+      allow delete: if false;
+    }
+
+    match /supportRequests/{requestId} {
+      allow read: if supportAgent() || ownsTicket(resource.data);
+      allow create: if ownsTicket(request.resource.data)
+        && request.resource.data.id == requestId
+        && request.resource.data.state == 'Pending department approval'
+        && request.resource.data.approvals.size() >= 1
+        && request.resource.data.approvals[0] == {'stage':'Department manager','status':'Pending'}
+        && (request.resource.data.approvals.size() == 1 || (request.resource.data.approvals.size() == 2
+          && request.resource.data.approvals[1] == {'stage':'IT approval','status':'Pending'}));
+      allow update: if request.resource.data.requesterEmail == resource.data.requesterEmail
+        && request.resource.data.id == resource.data.id && request.resource.data.code == resource.data.code
+        && (supportAgent() || (ownsTicket(resource.data) && resource.data.state == 'Returned for information'
+          && request.resource.data.state == 'Pending department approval'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['businessReason','state','updatedAt','audit','approvals'])
+          && request.resource.data.approvals[0] == {'stage':'Department manager','status':'Pending'}));
+      allow delete: if false;
+    }
+
+    match /supportRatings/{ratingId} {
+      allow read: if supportAgent() || ownsTicket(resource.data);
+      allow create: if supportAgent()
+        && request.resource.data.id == ratingId && request.resource.data.token == ratingId
+        && !('submittedAt' in request.resource.data)
+        && !('stars' in request.resource.data)
+        && request.resource.data.expiresAtMs is number
+        && get(/databases/$(database)/documents/supportTickets/$(request.resource.data.ticketId)).data.status == 'Resolved'
+        && get(/databases/$(database)/documents/supportTickets/$(request.resource.data.ticketId)).data.requesterEmail == request.resource.data.requesterEmail;
+      allow update: if ownsTicket(resource.data) && !('submittedAt' in resource.data)
+        && request.time.toMillis() < resource.data.expiresAtMs
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stars','resolved','comment','submittedAt'])
+        && request.resource.data.stars is int && request.resource.data.stars >= 1 && request.resource.data.stars <= 5
+        && request.resource.data.resolved is bool && request.resource.data.comment is string
+        && request.resource.data.comment.size() <= 4000 && request.resource.data.submittedAt is string;
+      allow delete: if false;
+    }
+
+    match /supportInboundMessages/{messageId} {
+      allow read: if operationalReader();
+      allow write: if false;
+    }
+
+    match /supportBridgeHealth/{bridgeId} {
+      allow read: if supportAgent();
+      allow write: if false;
+    }
+
+    match /supportMailQueue/{mailId} {
+      allow read: if operationalReader();
+      allow create: if (isAdministrator() || hasAdministratorRole() || supportAgent() || (hasApp('support') && request.resource.data.recipient == email()
+        && request.resource.data.event == 'Ticket created'
+        && get(/databases/$(database)/documents/supportTickets/$(request.resource.data.ticketId)).data.requesterEmail == email()))
+        && request.resource.data.status == 'Queued';
+      allow update, delete: if false;
     }
 
     match /{document=**} {

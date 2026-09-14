@@ -6,7 +6,8 @@ import { deriveCustody, type CustodyMovement } from '../../lib/custodyLifecycle'
 import EmployeeLifecycle from './EmployeeLifecycle'
 import LifecycleIntegrity from './LifecycleIntegrity'
 import DataTable from '../../components/DataTable'
-import Icon, { type IconName } from '../../components/Icon'
+import { type IconName } from '../../components/Icon'
+import GroupedAssetPicker from '../../components/GroupedAssetPicker'
 import { canDo, type RoleId } from '../../lib/accessControl'
 
 type Status = 'Active' | 'Inactive'
@@ -33,21 +34,25 @@ export default function AllocationCustody() {
   const [movements] = useLocalStore<CustodyMovement[]>('itms.custody-movements.v1', [])
   const [form, setForm] = useState(blankForm)
   const [formOpen, setFormOpen] = useState(false)
-  const [categoryId, setCategoryId] = useState('')
+  const [groupIds, setGroupIds] = useState<string[]>([])
+  const [userSearch, setUserSearch] = useState('')
   const [message, setMessage] = useState('')
   const [activeRole] = useLocalStore<RoleId>('itms.active-role.v1', 'administrator')
   const canRequest=canDo(activeRole,'request.custody');const canManagerApprove=canDo(activeRole,'approve.asset-manager');const canHeadApprove=canDo(activeRole,'approve.it-head')
 
-  const departmentUsers = users.filter((user) => user.status === 'Active' && user.departmentId === form.departmentId)
+  const searchableUsers = useMemo(() => {
+    const query = userSearch.trim().toLowerCase()
+    const activeUsers = users.filter((user) => user.status === 'Active')
+    if (!query) return activeUsers
+    return activeUsers.filter((user) => `${user.employeeCode} ${user.name} ${user.email}`.toLowerCase().includes(query))
+  }, [users, userSearch])
   const currentCustody = useMemo(() => deriveCustody(allocations, movements, assets), [allocations, movements, assets])
   const committedAssetIds = useMemo(() => new Set([...currentCustody.keys(), ...allocations.filter((allocation) => allocation.state === 'Pending Asset Manager' || allocation.state === 'Pending IT Head').flatMap((allocation) => allocation.assetIds)]), [allocations, currentCustody])
   const eligibleAssets = assets.filter((asset) => asset.stockStatus === 'In stock' && !committedAssetIds.has(asset.id))
-  const availableCategoryIds = useMemo(() => new Set(eligibleAssets.map((asset) => models.find((model) => model.id === asset.modelId)?.typeId).filter(Boolean)), [eligibleAssets, models])
-  const categoryAssets = eligibleAssets.filter((asset) => models.find((model) => model.id === asset.modelId)?.typeId === categoryId)
   const activeCustody = allocations.filter((allocation) => allocation.state === 'Active custody')
   const employeeCustodyAssetIds = new Set(activeCustody.filter((allocation) => allocation.userId === form.userId).flatMap((allocation) => allocation.assetIds))
   const employeeCustodyAssets = assets.filter((asset) => employeeCustodyAssetIds.has(asset.id) && asset.stockStatus === 'Allocated')
-  const categoryCustodyAssets = employeeCustodyAssets.filter((asset) => models.find((model) => model.id === asset.modelId)?.typeId === categoryId)
+  const groupedCustodyAssets = employeeCustodyAssets.filter((asset) => groupIds.includes(models.find((model) => model.id === asset.modelId)?.typeId ?? ''))
 
   useEffect(() => {
     const pendingIds = new Set(allocations.filter((item) => item.state === 'Pending Asset Manager' || item.state === 'Pending IT Head').flatMap((item) => item.assetIds))
@@ -63,9 +68,7 @@ export default function AllocationCustody() {
   }, [allocations, currentCustody, setAssets])
 
   function nextCode() { return `ALLOC-${new Date().getFullYear()}-${String(allocations.length + 1).padStart(4, '0')}` }
-  function closeForm() { setFormOpen(false); setForm(blankForm); setCategoryId('') }
-  function changeCategory(value: string) { setCategoryId(value); setForm((current) => ({ ...current, assetIds: [], replacementAssetId: '' })) }
-  function toggleAsset(assetId: string) { setForm((current) => ({ ...current, assetIds: current.assetIds.includes(assetId) ? current.assetIds.filter((id) => id !== assetId) : [...current.assetIds, assetId] })) }
+  function closeForm() { setFormOpen(false); setForm(blankForm); setGroupIds([]); setUserSearch('') }
 
   function createAllocation(event: FormEvent) {
     event.preventDefault()
@@ -114,15 +117,15 @@ export default function AllocationCustody() {
     {workspace === 'Integrity checks' ? <LifecycleIntegrity /> : workspace === 'Relationship ledger' ? <RelationshipLedger /> : workspace === 'Transfers & returns' ? <CustodyMovements /> : workspace === 'Onboarding & offboarding' ? <EmployeeLifecycle /> : <section className="master-panel custody-panel">
       <div className="operation-heading"><div><span className="eyebrow">DEPARTMENT-FIRST ALLOCATION</span><h2>Asset allocation requests</h2><p>Only active employees and uncommitted in-stock assets are available.</p></div>{canRequest&&<button type="button" className="primary-action" onClick={() => setFormOpen(!formOpen)}>＋ New allocation</button>}</div>
       {formOpen && <form className="master-form allocation-form" onSubmit={createAllocation}>
-        <label>Item group / asset category<select required value={categoryId} onChange={(event) => changeCategory(event.target.value)}><option value="">Select item group first</option>{assetTypes.filter((item) => item.status === 'Active' && availableCategoryIds.has(item.id)).map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label>
+        <label className="user-search">Search employee across all departments<input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Name, employee ID or email address"/><small>{searchableUsers.length} active employee{searchableUsers.length === 1 ? '' : 's'} found · selecting an employee fills their department automatically</small></label>
         <label>Department<select required value={form.departmentId} onChange={(event) => setForm({ ...form, departmentId: event.target.value, userId: '' })}><option value="">Select department</option>{departments.filter((item) => item.status === 'Active').map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label>
-        <label>Employee<select required disabled={!form.departmentId} value={form.userId} onChange={(event) => setForm({ ...form, userId: event.target.value, replacementAssetId: '' })}><option value="">{form.departmentId ? 'Select employee' : 'Select department first'}</option>{departmentUsers.map((item) => <option value={item.id} key={item.id}>{item.employeeCode} · {item.name}</option>)}</select></label>
+        <label>Employee<select required value={form.userId} onChange={(event) => { const user = users.find((item) => item.id === event.target.value); setForm({ ...form, userId: event.target.value, departmentId: user?.departmentId ?? form.departmentId, replacementAssetId: '' }) }}><option value="">{searchableUsers.length ? `Select employee (${searchableUsers.length})` : 'No employee matches search'}</option>{searchableUsers.map((item) => <option value={item.id} key={item.id}>{item.employeeCode} · {item.name} · {item.email}</option>)}</select></label>
         <label>Allocation reason<select value={form.allocationKind} onChange={(event) => setForm({ ...form, allocationKind: event.target.value as AllocationKind, replacementAssetId: '' })}><option>New allocation</option><option>Replacement</option><option>Temporary issue</option></select></label>
-        {form.allocationKind === 'Replacement' && <label>Asset being replaced<select required disabled={!form.userId || !categoryId} value={form.replacementAssetId} onChange={(event) => setForm({ ...form, replacementAssetId: event.target.value })}><option value="">{!form.userId ? 'Select employee first' : !categoryId ? 'Select category first' : 'Select current asset'}</option>{categoryCustodyAssets.map((asset) => <option value={asset.id} key={asset.id}>{assetLabel(asset)}</option>)}</select></label>}
+        {form.allocationKind === 'Replacement' && <label>Asset being replaced<select required disabled={!form.userId || !groupIds.length} value={form.replacementAssetId} onChange={(event) => setForm({ ...form, replacementAssetId: event.target.value })}><option value="">{!form.userId ? 'Select employee first' : !groupIds.length ? 'Add the replacement item group first' : 'Select current asset'}</option>{groupedCustodyAssets.map((asset) => <option value={asset.id} key={asset.id}>{assetLabel(asset)}</option>)}</select></label>}
         <label>Allocation date<input required type="date" value={form.allocationDate} onChange={(event) => setForm({ ...form, allocationDate: event.target.value })} /></label>
         <label>Expected return date<input type="date" min={form.allocationDate} value={form.expectedReturnDate} onChange={(event) => setForm({ ...form, expectedReturnDate: event.target.value })} /></label>
         <label className="wide-field">Business purpose<textarea required value={form.purpose} onChange={(event) => setForm({ ...form, purpose: event.target.value })} placeholder="Role requirement, onboarding, replacement or temporary allocation" /></label>
-        {categoryId && <fieldset className="asset-picker"><legend>Items to allocate <span>{form.assetIds.length} selected</span></legend>{categoryAssets.length ? categoryAssets.map((asset) => <label key={asset.id}><input type="checkbox" checked={form.assetIds.includes(asset.id)} onChange={() => toggleAsset(asset.id)} /><Icon name={asset.iconName??'package'} size={21}/><span>{assetLabel(asset)}</span></label>) : <p>No eligible in-stock items are available in this category.</p>}</fieldset>}
+        <GroupedAssetPicker title="Items to allocate" assets={eligibleAssets} assetTypes={assetTypes.filter((item) => item.status === 'Active')} models={models} selectedAssetIds={form.assetIds} onSelectedAssetIdsChange={(assetIds) => setForm((current) => ({ ...current, assetIds, replacementAssetId: assetIds.includes(current.replacementAssetId) ? current.replacementAssetId : '' }))} groupIds={groupIds} onGroupIdsChange={setGroupIds} emptyMessage="No uncommitted in-stock items are currently available." />
         <div className="approval-preview"><strong>Approval route</strong><span>1. IT Asset Manager</span><span>2. IT Head</span><span>3. Custody becomes active</span></div>
         <div className="form-actions"><button type="button" onClick={closeForm}>Cancel</button><button type="submit" className="primary-action" disabled={form.assetIds.length === 0}>Submit allocation</button></div>
       </form>}

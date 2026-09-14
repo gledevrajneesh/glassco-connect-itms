@@ -1,4 +1,5 @@
 import Icon, { type IconName } from '../../components/Icon'
+import type { GlasscoApplicationId } from '../../lib/applicationAccess'
 
 type PlatformApp = {
   id: string
@@ -11,14 +12,14 @@ type PlatformApp = {
 
 const applications: PlatformApp[] = [
   { id: 'itms', name: 'IT Asset Management', description: 'Manage IT inventory, custody, maintenance, verification and the complete asset lifecycle.', shortName: 'ITMS', icon: 'inventory', state: 'authorized' },
-  { id: 'support', name: 'IT Support Desk', description: 'Employee tickets and IT service coordination.', shortName: 'ITSD', icon: 'support', state: 'no-access' },
+  { id: 'support', name: 'IT Support Desk', description: 'Employee tickets, asset-linked support and IT service coordination.', shortName: 'ITSD', icon: 'support', state: 'authorized' },
   { id: 'requests', name: 'Non-consumable Requests', description: 'Requests and approval workflows.', shortName: 'NCR', icon: 'requests', state: 'planned' },
   { id: 'sales-service', name: 'Sales & Service Tickets', description: 'Sales and customer-service coordination.', shortName: 'SST', icon: 'service', state: 'planned' },
   { id: 'visitors', name: 'Visitor Management', description: 'Visitor approvals and controlled entry.', shortName: 'VMS', icon: 'visitor', state: 'planned' },
 ]
 
-export default function AppLauncher({ onOpen, identityEmail, identityName, itmsAuthorized }: { onOpen: (appId: string) => void; identityEmail: string; identityName: string; itmsAuthorized: boolean }) {
-  const availableApplications=applications.map(app=>app.id==='itms'?{...app,state:itmsAuthorized?'authorized' as const:'no-access' as const}:app)
+export default function AppLauncher({ onOpen, identityEmail, identityName, authorizedAppIds }: { onOpen: (appId: string) => void; identityEmail: string; identityName: string; authorizedAppIds: GlasscoApplicationId[] }) {
+  const availableApplications=applications.map(app=>app.state==='planned'?app:{...app,state:authorizedAppIds.includes(app.id as GlasscoApplicationId)?'authorized' as const:'no-access' as const})
   const authorized = availableApplications.filter((app) => app.state === 'authorized')
   const otherApps = availableApplications.filter((app) => app.state !== 'authorized')
   const hour = new Date().getHours()

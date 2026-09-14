@@ -1,0 +1,51 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null && request.auth.token.email is string;
+    }
+
+    function email() {
+      return request.auth.token.email.lower();
+    }
+
+    function assignment() {
+      return firestore.get(/databases/(default)/documents/accessAssignments/$(email())).data;
+    }
+
+    function activeUser() {
+      return signedIn() && assignment().status == 'Active';
+    }
+
+    function hasRole(role) {
+      return activeUser() && (assignment().roleId == role || (assignment().roleIds is list && role in assignment().roleIds));
+    }
+
+    function hasApp(app) {
+      return activeUser() && (!assignment().keys().hasAny(['appIds']) || (assignment().appIds is list && app in assignment().appIds));
+    }
+
+    function supportAgent() {
+      return hasApp('support') && (email() == 'dev@glasscolabs.com' || hasRole('administrator') || hasRole('asset-manager') || hasRole('it-head'));
+    }
+
+    function ownsTicket(ticketId) {
+      return hasApp('support') && firestore.get(/databases/(default)/documents/supportTickets/$(ticketId)).data.requesterEmail == email();
+    }
+
+    function safeContentType() {
+      return request.resource.contentType.matches('application/pdf|application/msword|application/rtf|application/vnd.openxmlformats-officedocument.wordprocessingml.document|application/vnd.ms-excel|application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|text/.*|image/.*|audio/.*|video/.*');
+    }
+
+    match /supportAttachments/{ticketId}/{uploaderUid}/{fileName} {
+      allow read: if supportAgent() || ownsTicket(ticketId);
+      allow create: if activeUser()
+        && hasApp('support')
+        && request.auth.uid == uploaderUid
+        && request.resource.size <= 15 * 1024 * 1024
+        && safeContentType();
+      allow update, delete: if false;
+    }
+  }
+}

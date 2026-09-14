@@ -4,6 +4,8 @@ import DataTable from '../../components/DataTable'
 import { changedFields, useMasterAudit } from '../../lib/masterAudit'
 import UserAssetProfile from './UserAssetProfile'
 import BulkDataCentre from './BulkDataCentre'
+import { firebaseAuth } from '../../lib/firebase'
+import { syncAssignmentFromUserMaster } from '../../lib/centralAccess'
 
 type Status = 'Active' | 'Inactive'
 type MasterType = 'Departments' | 'Locations' | 'User groups' | 'Users'
@@ -33,6 +35,7 @@ export default function SharedMasters() {
   const [activeTab, setActiveTab] = useState<MasterType>('Departments')
   const [formOpen, setFormOpen] = useState(false)
   const [departmentFilter, setDepartmentFilter] = useState('all')
+  const [recordSearch, setRecordSearch] = useState('')
   const [departments, setDepartments] = useLocalStore<BasicRecord[]>('itms.departments.v1', [])
   const [locations, setLocations] = useLocalStore<BasicRecord[]>('itms.locations.v1', [])
   const [groups, setGroups] = useLocalStore<BasicRecord[]>('itms.user-groups.v1', [])
@@ -47,7 +50,14 @@ export default function SharedMasters() {
   const audit = useMasterAudit()
 
   const currentBasic = activeTab === 'Departments' ? departments : activeTab === 'Locations' ? locations : groups
-  const filteredUsers = useMemo(() => departmentFilter === 'all' ? users : users.filter((user) => user.departmentId === departmentFilter), [departmentFilter, users])
+  const filteredBasic = useMemo(() => {
+    const query = recordSearch.trim().toLowerCase()
+    return query ? currentBasic.filter((record) => `${record.code} ${record.name} ${record.status}`.toLowerCase().includes(query)) : currentBasic
+  }, [currentBasic, recordSearch])
+  const filteredUsers = useMemo(() => {
+    const query = recordSearch.trim().toLowerCase()
+    return users.filter((user) => (departmentFilter === 'all' || user.departmentId === departmentFilter) && (!query || `${user.employeeCode} ${user.name} ${user.email} ${user.phone} ${departments.find((department) => department.id === user.departmentId)?.name ?? ''} ${locations.find((location) => location.id === user.locationId)?.name ?? ''} ${groups.find((group) => group.id === user.groupId)?.name ?? ''}`.toLowerCase().includes(query)))
+  }, [departmentFilter, departments, groups, locations, recordSearch, users])
 
   useEffect(() => {
     setDepartments((current) => [...current, ...demoDepartments.filter((seed) => !current.some((item) => item.code === seed.code))])
@@ -79,13 +89,14 @@ export default function SharedMasters() {
     closeForm()
   }
 
-  function saveUser(event: FormEvent) {
+  async function saveUser(event: FormEvent) {
     event.preventDefault()
     const record: UserRecord = { id: makeId('user'), code: userForm.employeeCode.trim().toUpperCase(), ...userForm, employeeCode: userForm.employeeCode.trim().toUpperCase(), name: userForm.name.trim(), email: userForm.email.trim().toLowerCase() }
     if (editingId) {
       const before = users.find((item) => item.id === editingId)
       const updated = { ...record, id: editingId }
       setUsers((records) => records.map((item) => item.id === editingId ? updated : item))
+      await syncAssignmentFromUserMaster(updated, firebaseAuth?.currentUser?.email || 'User Master administrator', before?.email).catch(() => undefined)
       if (before) audit.record({ module: 'Users', recordId: editingId, recordCode: updated.employeeCode, action: 'Updated', changedFields: changedFields(before, updated) })
       setMessage(`User ${updated.employeeCode} updated.`)
     } else {
@@ -94,10 +105,12 @@ export default function SharedMasters() {
     closeForm()
   }
 
-  function toggleStatus(id: string) {
+  async function toggleStatus(id: string) {
     if (activeTab === 'Users') {
       const before = users.find((item) => item.id === id)
-      setUsers((records) => records.map((record) => record.id === id ? { ...record, status: record.status === 'Active' ? 'Inactive' : 'Active' } : record))
+      const updated=before?{...before,status:(before.status==='Active'?'Inactive':'Active') as Status}:null
+      setUsers((records) => records.map((record) => record.id === id && updated ? updated : record))
+      if(updated) await syncAssignmentFromUserMaster(updated, firebaseAuth?.currentUser?.email || 'User Master administrator').catch(() => undefined)
       if (before) audit.record({ module: 'Users', recordId: id, recordCode: before.code, action: 'Status changed', changedFields: `status: ${before.status} → ${before.status === 'Active' ? 'Inactive' : 'Active'}` })
       return
     }
@@ -110,8 +123,9 @@ export default function SharedMasters() {
   function editBasic(record: BasicRecord) { setEditingId(record.id); setBasicForm({ code: record.code, name: record.name, status: record.status }); setFormOpen(true); setShowHistory(false) }
   function editUser(record: UserRecord) { setEditingId(record.id); setUserForm({ employeeCode: record.employeeCode, name: record.name, email: record.email, phone: record.phone, departmentId: record.departmentId, locationId: record.locationId, groupId: record.groupId, status: record.status }); setFormOpen(true); setShowHistory(false) }
 
-  const total = activeTab === 'Users' ? filteredUsers.length : currentBasic.length
-  const active = activeTab === 'Users' ? filteredUsers.filter((record) => record.status === 'Active').length : currentBasic.filter((record) => record.status === 'Active').length
+  const visibleRecords = activeTab === 'Users' ? filteredUsers : filteredBasic
+  const total = visibleRecords.length
+  const active = visibleRecords.filter((record) => record.status === 'Active').length
   const profileUser = users.find((record) => record.id === profileUserId)
   if (profileUser) return <UserAssetProfile user={profileUser} onClose={() => setProfileUserId('')} />
   if (bulkOpen) return <BulkDataCentre onClose={() => setBulkOpen(false)} />
@@ -120,16 +134,18 @@ export default function SharedMasters() {
     <>
       <section className="page-heading">
         <div><span className="eyebrow">GCCP-ITMS-BUILD-01</span><h1>Shared Organisation Masters</h1><p>Govern the people and organisation references used by every ITMS workflow.</p></div>
-        <span className="phase">LOCALHOST DATA</span>
+        <span className="phase">SHARED CLOUD DATA</span>
       </section>
 
       <section className="master-panel">
         <div className="master-toolbar">
           <div className="master-tabs" role="tablist" aria-label="Master type">
-            {tabs.map((tab) => <button type="button" role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? 'selected' : ''} key={tab} onClick={() => { setActiveTab(tab); setMessage(''); closeForm() }}>{tab}</button>)}
+            {tabs.map((tab) => <button type="button" role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? 'selected' : ''} key={tab} onClick={() => { setActiveTab(tab); setRecordSearch(''); setMessage(''); closeForm() }}>{tab}</button>)}
           </div>
           <div className="toolbar-actions"><button type="button" className="secondary-action" onClick={() => setBulkOpen(true)}>Bulk data</button><button type="button" className="secondary-action" onClick={() => { setShowHistory(!showHistory); closeForm() }}>Edit history</button><button type="button" className="primary-action" onClick={() => { setShowHistory(false); setFormOpen(!formOpen) }}>＋ Add {activeTab === 'Users' ? 'user' : activeTab.slice(0, -1).toLowerCase()}</button></div>
         </div>
+
+        <div className="master-search-bar"><label>Search {activeTab.toLowerCase()}<input value={recordSearch} onChange={(event) => setRecordSearch(event.target.value)} placeholder={activeTab === 'Users' ? 'Employee name, ID, email, contact, department or group' : 'Code, name or status'} /></label><span>{total} match{total === 1 ? '' : 'es'}</span></div>
 
         {formOpen && activeTab !== 'Users' && <form className="master-form" onSubmit={saveBasic}>
           <label>Code<input required maxLength={20} value={basicForm.code} onChange={(event) => setBasicForm({ ...basicForm, code: event.target.value })} placeholder={activeTab === 'Departments' ? 'e.g. IT' : 'Enter unique code'} /></label>
@@ -156,12 +172,12 @@ export default function SharedMasters() {
 
         {activeTab === 'Users' && <div className="filter-row"><label>Department filter<select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)}><option value="all">All departments</option>{departments.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label></div>}
 
-        <div aria-live="polite">{activeTab !== 'Users' ? <DataTable rows={currentBasic} rowKey={(record) => record.id} columns={[
+        <div aria-live="polite">{activeTab !== 'Users' ? <DataTable rows={filteredBasic} rowKey={(record) => record.id} columns={[
           { key: 'code', label: 'Code', sticky: true, width: '140px', render: (record) => <strong>{record.code}</strong> },
           { key: 'name', label: 'Name', width: '260px', render: (record) => record.name },
           { key: 'context', label: 'Record type', width: '230px', render: () => `Controlled ${activeTab.slice(0, -1).toLowerCase()} master` },
           { key: 'status', label: 'Status', width: '120px', render: (record) => <span className={`status ${record.status.toLowerCase()}`}>{record.status}</span> },
-          { key: 'actions', label: 'Actions', width: '210px', render: (record) => <div className="table-actions"><button className="table-action" type="button" onClick={() => editBasic(record)}>Edit</button><button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button></div> },
+          { key: 'actions', label: 'Actions', width: '210px', render: (record) => <div className="table-actions"><button className="table-action" type="button" onClick={() => editBasic(record)}>Edit</button><button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Remove' : 'Restore'}</button></div> },
         ]} empty={<div className="empty-state"><span>◫</span><strong>No {activeTab.toLowerCase()} recorded</strong><p>Add the first governed record to begin building the organisation master.</p></div>} /> : <DataTable rows={filteredUsers} rowKey={(record) => record.id} columns={[
           { key: 'employee', label: 'Employee', sticky: true, width: '220px', render: (record) => <button type="button" className="asset-link" onClick={() => setProfileUserId(record.id)}><strong>{record.employeeCode}</strong><small>{record.name}</small></button> },
           { key: 'department', label: 'Department', width: '190px', render: (record) => departments.find((item) => item.id === record.departmentId)?.name ?? 'Unavailable' },
@@ -170,7 +186,7 @@ export default function SharedMasters() {
           { key: 'email', label: 'Email', width: '230px', render: (record) => record.email },
           { key: 'phone', label: 'Contact', width: '150px', render: (record) => record.phone },
           { key: 'status', label: 'Status', width: '110px', render: (record) => <span className={`status ${record.status.toLowerCase()}`}>{record.status}</span> },
-          { key: 'actions', label: 'Actions', width: '210px', render: (record) => <div className="table-actions"><button className="table-action" type="button" onClick={() => editUser(record)}>Edit</button><button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Deactivate' : 'Reactivate'}</button></div> },
+          { key: 'actions', label: 'Actions', width: '210px', render: (record) => <div className="table-actions"><button className="table-action" type="button" onClick={() => editUser(record)}>Edit</button><button className="table-action" type="button" onClick={() => toggleStatus(record.id)}>{record.status === 'Active' ? 'Remove' : 'Restore'}</button></div> },
         ]} empty={<div className="empty-state"><span>◫</span><strong>No users recorded</strong><p>Add the first governed user record.</p></div>} />}</div>
         {showHistory && <DataTable rows={[...audit.events].filter((event) => event.module === activeTab).reverse()} rowKey={(event) => event.id} columns={[{ key: 'time', label: 'Timestamp', sticky: true, width: '190px', render: (event) => new Date(event.timestamp).toLocaleString('en-IN') }, { key: 'record', label: 'Record', width: '160px', render: (event) => event.recordCode }, { key: 'action', label: 'Action', width: '130px', render: (event) => event.action }, { key: 'fields', label: 'Changed fields', width: '360px', render: (event) => event.changedFields }, { key: 'actor', label: 'Changed by', width: '220px', render: (event) => event.actor }]} empty={<div className="empty-state"><span>◷</span><strong>No edit history</strong><p>Future changes to this master will be recorded here.</p></div>} />}
       </section>
