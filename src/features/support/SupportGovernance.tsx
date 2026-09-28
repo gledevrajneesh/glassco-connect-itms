@@ -141,6 +141,15 @@ const standardTimezones = [
   { value: "UTC", label: "Coordinated Universal Time — UTC" },
 ];
 
+const escalationRecipients = [
+  "Service Desk Manager",
+  "Support Lead",
+  "IT Head",
+  "Support Lead + IT Head",
+  "IT Service Desk",
+  "Business Systems Owner",
+];
+
 export function addBusinessMinutes(
   startValue: string,
   minutes: number,
@@ -476,7 +485,7 @@ export default function SupportGovernance({
                     />
                     <span>minutes</span>
                   </label>
-                  <input
+                  <select
                     value={policy.targets[priority].escalateTo}
                     onChange={(event) =>
                       setPolicy({
@@ -490,7 +499,10 @@ export default function SupportGovernance({
                         },
                       })
                     }
-                  />
+                  >
+                    {!escalationRecipients.includes(policy.targets[priority].escalateTo) && <option value={policy.targets[priority].escalateTo}>{policy.targets[priority].escalateTo}</option>}
+                    {escalationRecipients.map((recipient) => <option key={recipient}>{recipient}</option>)}
+                  </select>
                 </div>
               ),
             )}
