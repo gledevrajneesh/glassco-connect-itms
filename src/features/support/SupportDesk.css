@@ -44,3 +44,6 @@
 
 /* Keep bulk actions visually light and safely inside the toolbar. */
 .support-bulk-toolbar .support-primary{align-self:end;min-height:40px;border-radius:10px!important;border:1px solid #0784c5!important;box-shadow:0 5px 12px rgba(7,132,197,.16)!important;white-space:nowrap}.support-bulk-toolbar .support-primary:hover{background:#0877b6!important;box-shadow:0 7px 16px rgba(7,132,197,.22)!important}.support-bulk-toolbar{align-items:end;padding:12px 16px!important}.support-bulk-toolbar>div{align-self:end}
+
+/* One soft action language throughout the Support Desk. */
+.support-main .support-primary,.support-main .support-page-heading>button,.support-main .support-panel>header>button,.support-main .analytics-report-controls button{border-radius:10px!important;box-shadow:0 5px 13px rgba(21,61,89,.12)!important;transition:background .16s ease,box-shadow .16s ease,transform .16s ease}.support-main .support-primary:hover,.support-main .support-page-heading>button:hover,.support-main .support-panel>header>button:hover,.support-main .analytics-report-controls button:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(21,61,89,.16)!important}.support-main .support-primary:active,.support-main .support-page-heading>button:active,.support-main .support-panel>header>button:active{transform:translateY(0);box-shadow:none!important}
