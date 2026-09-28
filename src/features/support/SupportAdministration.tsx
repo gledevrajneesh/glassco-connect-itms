@@ -1,48 +1,1109 @@
-import { useMemo, useRef, useState } from 'react'
-import { useLocalStore } from '../../lib/localStore'
-import { useSupportStore } from '../../lib/supportStore'
-import { defaultCatalogue, type CatalogueItem } from './ServiceCatalog'
-import { defaultSlaPolicy, type SlaPolicy } from './SupportGovernance'
-import './SupportAdministration.css'
+import { useMemo, useRef, useState } from "react";
+import { useLocalStore } from "../../lib/localStore";
+import { useSupportStore } from "../../lib/supportStore";
+import { defaultCatalogue, type CatalogueItem } from "./ServiceCatalog";
+import { defaultSlaPolicy, type SlaPolicy } from "./SupportGovernance";
+import "./SupportAdministration.css";
 
-type Category={id:string;name:string;subcategories:string[];active:boolean}
-type Team={id:string;name:string;email:string;lead:string;members:string[];active:boolean}
-type Route={id:string;department:string;managerApprover:string;itApprover:string;escalationRecipient:string}
-type Code={id:string;kind:'Waiting reason'|'Resolution code';value:string;active:boolean}
-type Audit={id:string;at:string;actor:string;area:string;event:string}
-export type SupportAgent={id:string;name:string;email:string;role:'IT Support Lead'|'Support Agent'|'IT Asset Manager'|'IT Head';active:boolean}
-export type SupportOperations={agents:SupportAgent[];routes:{category:string;primary:string;fallback:string}[];monthlyReport:{owner:string;email:string;day:number;active:boolean}}
-type Ticket={id:string;code:string;category:string;subcategory:string;assignee?:string;requesterEmail:string;status:string}
-type Request={id:string;code:string;department:string;itemId:string;state:string;requesterEmail:string}
-const seedCategories:Category[]=[{id:'hardware',name:'Device or hardware',subcategories:['Laptop / desktop','Printer','Mobile device','Monitor or accessory','Hardware damage'],active:true},{id:'access',name:'Access request',subcategories:['Application access','Shared folder','Email group','VPN access','New user access'],active:true},{id:'network',name:'Network & connectivity',subcategories:['Wi-Fi','Internet','VPN connection','LAN / network port','Slow connectivity'],active:true},{id:'apps',name:'Email & applications',subcategories:['Outlook / email','Microsoft 365','Business application','Installation request','Application error'],active:true}]
-const seedTeams:Team[]=[{id:'service-desk',name:'IT Service Desk',email:'it.support@glasscolabs.com',lead:'IT Support Lead',members:['Service Desk Agent'],active:true},{id:'asset-team',name:'IT Asset Management',email:'asset.manager@glasscolabs.com',lead:'IT Asset Manager',members:['IT Asset Manager'],active:true},{id:'it-head',name:'IT Leadership',email:'it.head@glasscolabs.com',lead:'IT Head',members:['IT Head'],active:true}]
-const seedCodes:Code[]=[{id:'waiting-user',kind:'Waiting reason',value:'Awaiting employee information',active:true},{id:'waiting-vendor',kind:'Waiting reason',value:'Awaiting vendor',active:true},{id:'resolved-fix',kind:'Resolution code',value:'Permanent fix applied',active:true},{id:'resolved-guidance',kind:'Resolution code',value:'Guidance provided',active:true},{id:'resolved-replacement',kind:'Resolution code',value:'Asset replaced',active:true}]
-export const defaultSupportOperations:SupportOperations={agents:[{id:'rajneesh',name:'Rajneesh',email:'rajneesh@glasscolabs.com',role:'IT Support Lead',active:true},{id:'dev',name:'Development Administrator',email:'dev@glasscolabs.com',role:'Support Agent',active:true},{id:'asset',name:'IT Asset Manager',email:'asset.manager@glasscolabs.com',role:'IT Asset Manager',active:true},{id:'head',name:'IT Head',email:'it.head@glasscolabs.com',role:'IT Head',active:true}],routes:[{category:'Device or hardware',primary:'IT Asset Manager',fallback:'Rajneesh'},{category:'Access request',primary:'IT Head',fallback:'Rajneesh'},{category:'Network & connectivity',primary:'Rajneesh',fallback:'Development Administrator'},{category:'Email & applications',primary:'Rajneesh',fallback:'Development Administrator'}],monthlyReport:{owner:'Rajneesh',email:'rajneesh@glasscolabs.com',day:1,active:true}}
-function download(name:string,text:string,type='application/json'){const blob=new Blob([type.includes('csv')?'\ufeff':'',text],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}
-export default function SupportAdministration({identityEmail}:{identityEmail:string}){
- const [tab,setTab]=useState<'categories'|'catalogue'|'teams'|'operations'|'routing'|'codes'|'data'|'quality'|'audit'>('categories');const [categories,setCategories]=useLocalStore<Category[]>('connect.support-categories.v1',seedCategories);const [catalogue,setCatalogue]=useLocalStore<CatalogueItem[]>('connect.service-catalogue.v1',defaultCatalogue);const [teams,setTeams]=useLocalStore<Team[]>('connect.support-teams.v1',seedTeams);const [operations,setOperations]=useLocalStore<SupportOperations>('connect.support-operations.v1',defaultSupportOperations);const [routes,setRoutes]=useLocalStore<Route[]>('connect.support-routes.v1',[]);const [codes,setCodes]=useLocalStore<Code[]>('connect.support-codes.v1',seedCodes);const [policy]=useLocalStore<SlaPolicy>('connect.support-sla-policy.v1',defaultSlaPolicy);const [audits,setAudits]=useLocalStore<Audit[]>('connect.support-admin-audit.v1',[]);const [tickets]=useSupportStore<Ticket>('supportTickets',identityEmail,true);const [requests]=useSupportStore<Request>('supportRequests',identityEmail,true);const fileRef=useRef<HTMLInputElement>(null)
- const [name,setName]=useState('');const [details,setDetails]=useState('');const [email,setEmail]=useState('');const [lead,setLead]=useState('');const [approval,setApproval]=useState<CatalogueItem['approval']>('Department + IT');const [hours,setHours]=useState(16)
- function audit(area:string,event:string){setAudits(rows=>[...rows,{id:crypto.randomUUID(),at:new Date().toISOString(),actor:identityEmail,area,event}])}
- function addCategory(){if(!name.trim())return;setCategories(rows=>[...rows,{id:crypto.randomUUID(),name:name.trim(),subcategories:details.split(',').map(v=>v.trim()).filter(Boolean),active:true}]);audit('Ticket categories',`Created ${name.trim()}`);setName('');setDetails('')}
- function addCatalogue(){if(!name.trim())return;const id=name.toLowerCase().replace(/[^a-z0-9]+/g,'-');setCatalogue(rows=>[...rows,{id,title:name.trim(),category:details.trim()||'General service',description:'Controlled IT service request.',icon:'requests',approval,slaHours:hours,fields:['Request details']}]);audit('Service catalogue',`Created ${name.trim()}`);setName('');setDetails('')}
- function addTeam(){if(!name.trim()||!email.trim())return;setTeams(rows=>[...rows,{id:crypto.randomUUID(),name:name.trim(),email:email.trim(),lead:lead.trim(),members:[],active:true}]);audit('Assignment teams',`Created ${name.trim()}`);setName('');setEmail('');setLead('')}
- function addRoute(){if(!name.trim())return;setRoutes(rows=>[...rows,{id:crypto.randomUUID(),department:name.trim(),managerApprover:email.trim(),itApprover:lead.trim(),escalationRecipient:details.trim()}]);audit('Approval routing',`Mapped ${name.trim()}`);setName('');setEmail('');setLead('');setDetails('')}
- function addCode(){if(!name.trim())return;const kind=details==='Resolution code'?'Resolution code':'Waiting reason';setCodes(rows=>[...rows,{id:crypto.randomUUID(),kind,value:name.trim(),active:true}]);audit('Reasons and codes',`Created ${kind}: ${name.trim()}`);setName('')}
- function exportPackage(){const payload={exportedAt:new Date().toISOString(),exportedBy:identityEmail,configuration:{categories,catalogue,teams,routes,codes,policy},transactions:{tickets,serviceRequests:requests},audit:audits};download(`glassco-support-backup-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(payload,null,2));audit('Controlled export','Complete Support Desk backup exported')}
- function template(){download('support-master-import-template.csv','record_type,name,category,email,lead,details,active\ncategory,Example category,,,,Subcategory 1|Subcategory 2,true\nteam,Example team,,team@glasscolabs.com,Team Lead,Member 1|Member 2,true\nroute,Finance,,manager@glasscolabs.com,it.head@glasscolabs.com,escalation@glasscolabs.com,true\n','text/csv')}
- async function importCsv(file:File){const text=await file.text();const lines=text.split(/\r?\n/).slice(1).filter(Boolean);let added=0;for(const line of lines){const [type,rowName,,rowEmail,rowLead,rowDetails]=line.split(',').map(v=>v.trim());if(!rowName)continue;if(type==='category'){setCategories(rows=>[...rows,{id:crypto.randomUUID(),name:rowName,subcategories:(rowDetails||'').split('|').filter(Boolean),active:true}]);added++}if(type==='team'){setTeams(rows=>[...rows,{id:crypto.randomUUID(),name:rowName,email:rowEmail,lead:rowLead,members:(rowDetails||'').split('|').filter(Boolean),active:true}]);added++}if(type==='route'){setRoutes(rows=>[...rows,{id:crypto.randomUUID(),department:rowName,managerApprover:rowEmail,itApprover:rowLead,escalationRecipient:rowDetails}]);added++}}audit('Bulk import',`${added} configuration records imported from ${file.name}`);window.alert(`${added} records imported.`)}
- const quality=useMemo(()=>{const issues:{severity:string;issue:string;count:number;detail:string}[]=[];const duplicateCategories=categories.filter((c,i)=>categories.findIndex(x=>x.name.toLowerCase()===c.name.toLowerCase())!==i);if(duplicateCategories.length)issues.push({severity:'High',issue:'Duplicate categories',count:duplicateCategories.length,detail:'Category names must be unique.'});const unmapped=tickets.filter(t=>t.assignee&&!teams.some(team=>team.name===t.assignee));if(unmapped.length)issues.push({severity:'Medium',issue:'Unmapped ticket assignees',count:unmapped.length,detail:'Owner is not linked to an active assignment team.'});const missingRoutes=requests.filter(r=>r.department&&!routes.some(route=>route.department.toLowerCase()===r.department.toLowerCase()));if(missingRoutes.length)issues.push({severity:'High',issue:'Missing department approval routes',count:missingRoutes.length,detail:'Service requests cannot resolve a governed approver.'});const invalidCatalogue=catalogue.filter(c=>!c.fields.length||!c.slaHours);if(invalidCatalogue.length)issues.push({severity:'Medium',issue:'Incomplete catalogue definitions',count:invalidCatalogue.length,detail:'Required fields or SLA targets are missing.'});return issues},[catalogue,categories,requests,routes,teams,tickets])
- const toggle=<T extends {id:string;active:boolean}>(rows:T[],setRows:React.Dispatch<React.SetStateAction<T[]>>,id:string,area:string)=>{setRows(rows.map(row=>row.id===id?{...row,active:!row.active}:row));audit(area,`Changed active state for ${id}`)}
- return <section className="support-admin"><div className="support-page-heading"><div><span>BUILD 09 · CONTROLLED ADMINISTRATION</span><h1>Support Desk administration</h1><p>Govern master data, routing, calendars, imports, backups and data quality.</p></div></div><div className="admin-tabs">{([['categories','Categories'],['catalogue','Catalogue'],['teams','Teams'],['operations','Operational controls'],['routing','Approval routes'],['codes','Reasons & codes'],['data','Import & backup'],['quality','Data quality'],['audit','Edit history']] as const).map(([id,label])=><button className={tab===id?'active':''} onClick={()=>setTab(id)} key={id}>{label}</button>)}</div>
- {tab==='categories'&&<MasterTable title="Ticket categories & subcategories" form={<><input placeholder="Category name" value={name} onChange={e=>setName(e.target.value)}/><input placeholder="Subcategories, comma separated" value={details} onChange={e=>setDetails(e.target.value)}/><button onClick={addCategory}>Add category</button></>} head={['Category','Subcategories','State','Action']} rows={categories.map(row=><div key={row.id}><strong>{row.name}</strong><span>{row.subcategories.join(' · ')}</span><em>{row.active?'Active':'Inactive'}</em><button onClick={()=>toggle(categories,setCategories,row.id,'Ticket categories')}>{row.active?'Deactivate':'Activate'}</button></div>)}/>} 
- {tab==='catalogue'&&<MasterTable title="Service catalogue definitions" form={<><input placeholder="Service name" value={name} onChange={e=>setName(e.target.value)}/><input placeholder="Category" value={details} onChange={e=>setDetails(e.target.value)}/><select value={approval} onChange={e=>setApproval(e.target.value as typeof approval)}><option>None</option><option>Department</option><option>Department + IT</option></select><input type="number" value={hours} onChange={e=>setHours(Number(e.target.value))}/><button onClick={addCatalogue}>Add service</button></>} head={['Service','Category','Approval route','Target','Fields']} rows={catalogue.map(row=><div key={row.id}><strong>{row.title}</strong><span>{row.category}</span><span>{row.approval}</span><span>{row.slaHours} hours</span><span>{row.fields.join(' · ')}</span></div>)}/>} 
- {tab==='teams'&&<MasterTable title="Assignment teams & agent groups" form={<><input placeholder="Team name" value={name} onChange={e=>setName(e.target.value)}/><input placeholder="Group email" value={email} onChange={e=>setEmail(e.target.value)}/><input placeholder="Team lead" value={lead} onChange={e=>setLead(e.target.value)}/><button onClick={addTeam}>Add team</button></>} head={['Team','Mailbox','Lead','Members','Action']} rows={teams.map(row=><div key={row.id}><strong>{row.name}</strong><span>{row.email}</span><span>{row.lead}</span><span>{row.members.join(' · ')||'No members'}</span><button onClick={()=>toggle(teams,setTeams,row.id,'Assignment teams')}>{row.active?'Deactivate':'Activate'}</button></div>)}/>} 
- {tab==='operations'&&<section className="admin-operations"><section className="support-panel admin-master"><header><div><h2>Agent roster</h2><small>Only active agents can be selected by the automated routing rules.</small></div></header><div className="admin-table"><div className="head" style={{gridTemplateColumns:'1.2fr 1.4fr 1fr .7fr'}}><span>Agent</span><span>Business email</span><span>Operational role</span><span>State</span></div>{operations.agents.map(agent=><div key={agent.id} style={{gridTemplateColumns:'1.2fr 1.4fr 1fr .7fr'}}><strong>{agent.name}</strong><span>{agent.email}</span><span>{agent.role}</span><button onClick={()=>{setOperations(current=>({...current,agents:current.agents.map(row=>row.id===agent.id?{...row,active:!row.active}:row)}));audit('Agent roster',`${agent.active?'Deactivated':'Activated'} ${agent.name}`)}}>{agent.active?'Active':'Inactive'}</button></div>)}</div></section><section className="support-panel admin-master"><header><div><h2>Category-to-agent routing</h2><small>New tickets are sent to the primary active owner, with the fallback used where primary ownership is unavailable.</small></div></header><div className="admin-table"><div className="head" style={{gridTemplateColumns:'1.2fr 1fr 1fr'}}><span>Ticket category</span><span>Primary owner</span><span>Fallback owner</span></div>{operations.routes.map(route=><div key={route.category} style={{gridTemplateColumns:'1.2fr 1fr 1fr'}}><strong>{route.category}</strong><select value={route.primary} onChange={e=>{setOperations(current=>({...current,routes:current.routes.map(row=>row.category===route.category?{...row,primary:e.target.value}:row)}));audit('Category routing',`Changed primary owner for ${route.category}`)}}>{operations.agents.filter(agent=>agent.active).map(agent=><option key={agent.id}>{agent.name}</option>)}</select><select value={route.fallback} onChange={e=>{setOperations(current=>({...current,routes:current.routes.map(row=>row.category===route.category?{...row,fallback:e.target.value}:row)}));audit('Category routing',`Changed fallback owner for ${route.category}`)}}>{operations.agents.filter(agent=>agent.active).map(agent=><option key={agent.id}>{agent.name}</option>)}</select></div>)}</div></section><section className="support-panel admin-master"><header><div><h2>Monthly KPI report ownership</h2><small>Sets the accountable recipient for the monthly management pack. Downloaded data remains available from Reports &amp; Analytics.</small></div></header><div className="admin-add"><input value={operations.monthlyReport.owner} onChange={e=>setOperations(current=>({...current,monthlyReport:{...current.monthlyReport,owner:e.target.value}}))} placeholder="Report owner"/><input value={operations.monthlyReport.email} onChange={e=>setOperations(current=>({...current,monthlyReport:{...current.monthlyReport,email:e.target.value}}))} placeholder="Owner email"/><label>Day of month<input type="number" min="1" max="28" value={operations.monthlyReport.day} onChange={e=>setOperations(current=>({...current,monthlyReport:{...current.monthlyReport,day:Number(e.target.value)}}))}/></label><button className="support-primary" onClick={()=>audit('Monthly KPI ownership',`Monthly report owner set to ${operations.monthlyReport.owner} on day ${operations.monthlyReport.day}`)}>Save ownership</button></div></section><section className="support-panel admin-operation-note"><strong>SLA and escalation controls</strong><span>Priority-level first response, resolution and escalation recipients are governed in <b>SLA &amp; notifications → SLA policy</b>. Changes there are timestamped with the administrator identity.</span></section></section>}
- {tab==='routing'&&<MasterTable title="Department approval & escalation routing" form={<><input placeholder="Department" value={name} onChange={e=>setName(e.target.value)}/><input placeholder="Manager approver email" value={email} onChange={e=>setEmail(e.target.value)}/><input placeholder="IT approver email" value={lead} onChange={e=>setLead(e.target.value)}/><input placeholder="Escalation recipient" value={details} onChange={e=>setDetails(e.target.value)}/><button onClick={addRoute}>Add route</button></>} head={['Department','Manager approver','IT approver','Escalation','State']} rows={routes.map(row=><div key={row.id}><strong>{row.department}</strong><span>{row.managerApprover}</span><span>{row.itApprover}</span><span>{row.escalationRecipient}</span><em>Active</em></div>)}/>} 
- {tab==='codes'&&<MasterTable title="Waiting reasons & resolution codes" form={<><select value={details} onChange={e=>setDetails(e.target.value)}><option>Waiting reason</option><option>Resolution code</option></select><input placeholder="Controlled reason or code" value={name} onChange={e=>setName(e.target.value)}/><button onClick={addCode}>Add record</button></>} head={['Type','Value','State','Action']} rows={codes.map(row=><div key={row.id}><strong>{row.kind}</strong><span>{row.value}</span><em>{row.active?'Active':'Inactive'}</em><button onClick={()=>toggle(codes,setCodes,row.id,'Reasons and codes')}>{row.active?'Deactivate':'Activate'}</button></div>)}/>} 
- {tab==='data'&&<section className="admin-data-grid"><article className="support-panel"><h2>CSV master-data import</h2><p>Download the controlled format, complete it without changing headers, then validate and import categories, teams and approval routes.</p><div><button onClick={template}>Download CSV template</button><button className="support-primary" onClick={()=>fileRef.current?.click()}>Select CSV to import</button><input hidden ref={fileRef} type="file" accept=".csv" onChange={e=>e.target.files?.[0]&&importCsv(e.target.files[0])}/></div></article><article className="support-panel"><h2>Complete controlled backup</h2><p>Export configuration, tickets, service requests, relationships and administrative audit history in one dated JSON package.</p><button className="support-primary" onClick={exportPackage}>Export complete backup</button></article><article className="support-panel"><h2>Business calendar</h2><p>{policy.timezone} · {policy.businessStart}–{policy.businessEnd} · {policy.workingDays.length} working days</p><button onClick={()=>setTab('audit')}>Review governed changes</button></article></section>}
- {tab==='quality'&&<section className="support-panel admin-quality"><header><div><h2>Configuration data-quality dashboard</h2><small>Duplicates, orphan assignments, missing approval mapping and incomplete definitions.</small></div><strong>{quality.length} issue types</strong></header><div className="head"><span>Severity</span><span>Issue</span><span>Records</span><span>Recommended action</span></div>{quality.map(row=><div key={row.issue}><em className={row.severity.toLowerCase()}>{row.severity}</em><strong>{row.issue}</strong><span>{row.count}</span><span>{row.detail}</span></div>)}{!quality.length&&<p>No configuration-quality exceptions detected.</p>}</section>}
- {tab==='audit'&&<section className="support-panel admin-audit"><header><div><h2>Immutable administration history</h2><small>Every master-data and configuration change made through this screen.</small></div></header><div className="head"><span>Area</span><span>Change</span><span>Actor</span><span>Timestamp</span></div>{[...audits].reverse().map(row=><div key={row.id}><strong>{row.area}</strong><span>{row.event}</span><span>{row.actor}</span><span>{new Date(row.at).toLocaleString('en-IN')}</span></div>)}{!audits.length&&<p>No administrative changes recorded yet.</p>}</section>}
- </section>
+type Category = {
+  id: string;
+  name: string;
+  subcategories: string[];
+  active: boolean;
+};
+type Team = {
+  id: string;
+  name: string;
+  email: string;
+  lead: string;
+  members: string[];
+  active: boolean;
+};
+type Route = {
+  id: string;
+  department: string;
+  managerApprover: string;
+  itApprover: string;
+  escalationRecipient: string;
+};
+type Code = {
+  id: string;
+  kind: "Waiting reason" | "Resolution code";
+  value: string;
+  active: boolean;
+};
+type Audit = {
+  id: string;
+  at: string;
+  actor: string;
+  area: string;
+  event: string;
+};
+export type SupportAgent = {
+  id: string;
+  name: string;
+  email: string;
+  role: "IT Support Lead" | "Support Agent" | "IT Asset Manager" | "IT Head";
+  active: boolean;
+};
+export type SupportOperations = {
+  agents: SupportAgent[];
+  routes: { category: string; primary: string; fallback: string }[];
+  monthlyReport: { owner: string; email: string; day: number; active: boolean };
+};
+type Ticket = {
+  id: string;
+  code: string;
+  category: string;
+  subcategory: string;
+  assignee?: string;
+  requesterEmail: string;
+  status: string;
+};
+type Request = {
+  id: string;
+  code: string;
+  department: string;
+  itemId: string;
+  state: string;
+  requesterEmail: string;
+};
+const seedCategories: Category[] = [
+  {
+    id: "hardware",
+    name: "Device or hardware",
+    subcategories: [
+      "Laptop / desktop",
+      "Printer",
+      "Mobile device",
+      "Monitor or accessory",
+      "Hardware damage",
+    ],
+    active: true,
+  },
+  {
+    id: "access",
+    name: "Access request",
+    subcategories: [
+      "Application access",
+      "Shared folder",
+      "Email group",
+      "VPN access",
+      "New user access",
+    ],
+    active: true,
+  },
+  {
+    id: "network",
+    name: "Network & connectivity",
+    subcategories: [
+      "Wi-Fi",
+      "Internet",
+      "VPN connection",
+      "LAN / network port",
+      "Slow connectivity",
+    ],
+    active: true,
+  },
+  {
+    id: "apps",
+    name: "Email & applications",
+    subcategories: [
+      "Outlook / email",
+      "Microsoft 365",
+      "Business application",
+      "Installation request",
+      "Application error",
+    ],
+    active: true,
+  },
+];
+const seedTeams: Team[] = [
+  {
+    id: "service-desk",
+    name: "IT Service Desk",
+    email: "it.support@glasscolabs.com",
+    lead: "IT Support Lead",
+    members: ["Service Desk Agent"],
+    active: true,
+  },
+  {
+    id: "asset-team",
+    name: "IT Asset Management",
+    email: "asset.manager@glasscolabs.com",
+    lead: "IT Asset Manager",
+    members: ["IT Asset Manager"],
+    active: true,
+  },
+  {
+    id: "it-head",
+    name: "IT Leadership",
+    email: "it.head@glasscolabs.com",
+    lead: "IT Head",
+    members: ["IT Head"],
+    active: true,
+  },
+];
+const seedCodes: Code[] = [
+  {
+    id: "waiting-user",
+    kind: "Waiting reason",
+    value: "Awaiting employee information",
+    active: true,
+  },
+  {
+    id: "waiting-vendor",
+    kind: "Waiting reason",
+    value: "Awaiting vendor",
+    active: true,
+  },
+  {
+    id: "resolved-fix",
+    kind: "Resolution code",
+    value: "Permanent fix applied",
+    active: true,
+  },
+  {
+    id: "resolved-guidance",
+    kind: "Resolution code",
+    value: "Guidance provided",
+    active: true,
+  },
+  {
+    id: "resolved-replacement",
+    kind: "Resolution code",
+    value: "Asset replaced",
+    active: true,
+  },
+];
+export const defaultSupportOperations: SupportOperations = {
+  agents: [
+    {
+      id: "rajneesh",
+      name: "Rajneesh",
+      email: "rajneesh@glasscolabs.com",
+      role: "IT Support Lead",
+      active: true,
+    },
+    {
+      id: "dev",
+      name: "Development Administrator",
+      email: "dev@glasscolabs.com",
+      role: "Support Agent",
+      active: true,
+    },
+    {
+      id: "asset",
+      name: "IT Asset Manager",
+      email: "asset.manager@glasscolabs.com",
+      role: "IT Asset Manager",
+      active: true,
+    },
+    {
+      id: "head",
+      name: "IT Head",
+      email: "it.head@glasscolabs.com",
+      role: "IT Head",
+      active: true,
+    },
+  ],
+  routes: [
+    {
+      category: "Device or hardware",
+      primary: "IT Asset Manager",
+      fallback: "Rajneesh",
+    },
+    { category: "Access request", primary: "IT Head", fallback: "Rajneesh" },
+    {
+      category: "Network & connectivity",
+      primary: "Rajneesh",
+      fallback: "Development Administrator",
+    },
+    {
+      category: "Email & applications",
+      primary: "Rajneesh",
+      fallback: "Development Administrator",
+    },
+  ],
+  monthlyReport: {
+    owner: "Rajneesh",
+    email: "rajneesh@glasscolabs.com",
+    day: 1,
+    active: true,
+  },
+};
+function download(name: string, text: string, type = "application/json") {
+  const blob = new Blob([type.includes("csv") ? "\ufeff" : "", text], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
 }
-function MasterTable({title,form,head,rows}:{title:string;form:React.ReactNode;head:string[];rows:React.ReactNode[]}){return <section className="support-panel admin-master"><header><h2>{title}</h2></header><div className="admin-add">{form}</div><div className="admin-table"><div className="head" style={{gridTemplateColumns:`repeat(${head.length},minmax(130px,1fr))`}}>{head.map(h=><span key={h}>{h}</span>)}</div>{rows}</div></section>}
+export default function SupportAdministration({
+  identityEmail,
+}: {
+  identityEmail: string;
+}) {
+  const [tab, setTab] = useState<
+    | "categories"
+    | "catalogue"
+    | "teams"
+    | "operations"
+    | "routing"
+    | "codes"
+    | "data"
+    | "quality"
+    | "audit"
+  >("categories");
+  const [categories, setCategories] = useLocalStore<Category[]>(
+    "connect.support-categories.v1",
+    seedCategories,
+  );
+  const [catalogue, setCatalogue] = useLocalStore<CatalogueItem[]>(
+    "connect.service-catalogue.v1",
+    defaultCatalogue,
+  );
+  const [teams, setTeams] = useLocalStore<Team[]>(
+    "connect.support-teams.v1",
+    seedTeams,
+  );
+  const [operations, setOperations] = useLocalStore<SupportOperations>(
+    "connect.support-operations.v1",
+    defaultSupportOperations,
+  );
+  const [routes, setRoutes] = useLocalStore<Route[]>(
+    "connect.support-routes.v1",
+    [],
+  );
+  const [codes, setCodes] = useLocalStore<Code[]>(
+    "connect.support-codes.v1",
+    seedCodes,
+  );
+  const [policy] = useLocalStore<SlaPolicy>(
+    "connect.support-sla-policy.v1",
+    defaultSlaPolicy,
+  );
+  const [audits, setAudits] = useLocalStore<Audit[]>(
+    "connect.support-admin-audit.v1",
+    [],
+  );
+  const [tickets] = useSupportStore<Ticket>(
+    "supportTickets",
+    identityEmail,
+    true,
+  );
+  const [requests] = useSupportStore<Request>(
+    "supportRequests",
+    identityEmail,
+    true,
+  );
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [name, setName] = useState("");
+  const [details, setDetails] = useState("");
+  const [email, setEmail] = useState("");
+  const [lead, setLead] = useState("");
+  const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [showTeamCreate, setShowTeamCreate] = useState(false);
+  const [approval, setApproval] =
+    useState<CatalogueItem["approval"]>("Department + IT");
+  const [hours, setHours] = useState(16);
+  function audit(area: string, event: string) {
+    setAudits((rows) => [
+      ...rows,
+      {
+        id: crypto.randomUUID(),
+        at: new Date().toISOString(),
+        actor: identityEmail,
+        area,
+        event,
+      },
+    ]);
+  }
+  function addCategory() {
+    if (!name.trim()) return;
+    setCategories((rows) => [
+      ...rows,
+      {
+        id: crypto.randomUUID(),
+        name: name.trim(),
+        subcategories: details
+          .split(",")
+          .map((v) => v.trim())
+          .filter(Boolean),
+        active: true,
+      },
+    ]);
+    audit("Ticket categories", `Created ${name.trim()}`);
+    setName("");
+    setDetails("");
+  }
+  function addCatalogue() {
+    if (!name.trim()) return;
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    setCatalogue((rows) => [
+      ...rows,
+      {
+        id,
+        title: name.trim(),
+        category: details.trim() || "General service",
+        description: "Controlled IT service request.",
+        icon: "requests",
+        approval,
+        slaHours: hours,
+        fields: ["Request details"],
+      },
+    ]);
+    audit("Service catalogue", `Created ${name.trim()}`);
+    setName("");
+    setDetails("");
+  }
+  function addTeam() {
+    if (!name.trim() || !email.trim()) return;
+    const teamId = crypto.randomUUID();
+    setTeams((rows) => [
+      ...rows,
+      {
+        id: teamId,
+        name: name.trim(),
+        email: email.trim(),
+        lead: lead.trim(),
+        members: [],
+        active: true,
+      },
+    ]);
+    audit("Assignment teams", `Created ${name.trim()}`);
+    setName("");
+    setEmail("");
+    setLead("");
+    setSelectedTeamId(teamId);
+    setShowTeamCreate(false);
+  }
+  function addRoute() {
+    if (!name.trim()) return;
+    setRoutes((rows) => [
+      ...rows,
+      {
+        id: crypto.randomUUID(),
+        department: name.trim(),
+        managerApprover: email.trim(),
+        itApprover: lead.trim(),
+        escalationRecipient: details.trim(),
+      },
+    ]);
+    audit("Approval routing", `Mapped ${name.trim()}`);
+    setName("");
+    setEmail("");
+    setLead("");
+    setDetails("");
+  }
+  function addCode() {
+    if (!name.trim()) return;
+    const kind =
+      details === "Resolution code" ? "Resolution code" : "Waiting reason";
+    setCodes((rows) => [
+      ...rows,
+      { id: crypto.randomUUID(), kind, value: name.trim(), active: true },
+    ]);
+    audit("Reasons and codes", `Created ${kind}: ${name.trim()}`);
+    setName("");
+  }
+  function exportPackage() {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      exportedBy: identityEmail,
+      configuration: { categories, catalogue, teams, routes, codes, policy },
+      transactions: { tickets, serviceRequests: requests },
+      audit: audits,
+    };
+    download(
+      `glassco-support-backup-${new Date().toISOString().slice(0, 10)}.json`,
+      JSON.stringify(payload, null, 2),
+    );
+    audit("Controlled export", "Complete Support Desk backup exported");
+  }
+  function template() {
+    download(
+      "support-master-import-template.csv",
+      "record_type,name,category,email,lead,details,active\ncategory,Example category,,,,Subcategory 1|Subcategory 2,true\nteam,Example team,,team@glasscolabs.com,Team Lead,Member 1|Member 2,true\nroute,Finance,,manager@glasscolabs.com,it.head@glasscolabs.com,escalation@glasscolabs.com,true\n",
+      "text/csv",
+    );
+  }
+  async function importCsv(file: File) {
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).slice(1).filter(Boolean);
+    let added = 0;
+    for (const line of lines) {
+      const [type, rowName, , rowEmail, rowLead, rowDetails] = line
+        .split(",")
+        .map((v) => v.trim());
+      if (!rowName) continue;
+      if (type === "category") {
+        setCategories((rows) => [
+          ...rows,
+          {
+            id: crypto.randomUUID(),
+            name: rowName,
+            subcategories: (rowDetails || "").split("|").filter(Boolean),
+            active: true,
+          },
+        ]);
+        added++;
+      }
+      if (type === "team") {
+        setTeams((rows) => [
+          ...rows,
+          {
+            id: crypto.randomUUID(),
+            name: rowName,
+            email: rowEmail,
+            lead: rowLead,
+            members: (rowDetails || "").split("|").filter(Boolean),
+            active: true,
+          },
+        ]);
+        added++;
+      }
+      if (type === "route") {
+        setRoutes((rows) => [
+          ...rows,
+          {
+            id: crypto.randomUUID(),
+            department: rowName,
+            managerApprover: rowEmail,
+            itApprover: rowLead,
+            escalationRecipient: rowDetails,
+          },
+        ]);
+        added++;
+      }
+    }
+    audit(
+      "Bulk import",
+      `${added} configuration records imported from ${file.name}`,
+    );
+    window.alert(`${added} records imported.`);
+  }
+  const quality = useMemo(() => {
+    const issues: {
+      severity: string;
+      issue: string;
+      count: number;
+      detail: string;
+    }[] = [];
+    const duplicateCategories = categories.filter(
+      (c, i) =>
+        categories.findIndex(
+          (x) => x.name.toLowerCase() === c.name.toLowerCase(),
+        ) !== i,
+    );
+    if (duplicateCategories.length)
+      issues.push({
+        severity: "High",
+        issue: "Duplicate categories",
+        count: duplicateCategories.length,
+        detail: "Category names must be unique.",
+      });
+    const unmapped = tickets.filter(
+      (t) => t.assignee && !teams.some((team) => team.name === t.assignee),
+    );
+    if (unmapped.length)
+      issues.push({
+        severity: "Medium",
+        issue: "Unmapped ticket assignees",
+        count: unmapped.length,
+        detail: "Owner is not linked to an active assignment team.",
+      });
+    const missingRoutes = requests.filter(
+      (r) =>
+        r.department &&
+        !routes.some(
+          (route) =>
+            route.department.toLowerCase() === r.department.toLowerCase(),
+        ),
+    );
+    if (missingRoutes.length)
+      issues.push({
+        severity: "High",
+        issue: "Missing department approval routes",
+        count: missingRoutes.length,
+        detail: "Service requests cannot resolve a governed approver.",
+      });
+    const invalidCatalogue = catalogue.filter(
+      (c) => !c.fields.length || !c.slaHours,
+    );
+    if (invalidCatalogue.length)
+      issues.push({
+        severity: "Medium",
+        issue: "Incomplete catalogue definitions",
+        count: invalidCatalogue.length,
+        detail: "Required fields or SLA targets are missing.",
+      });
+    return issues;
+  }, [catalogue, categories, requests, routes, teams, tickets]);
+  const toggle = <T extends { id: string; active: boolean }>(
+    rows: T[],
+    setRows: React.Dispatch<React.SetStateAction<T[]>>,
+    id: string,
+    area: string,
+  ) => {
+    setRows(
+      rows.map((row) =>
+        row.id === id ? { ...row, active: !row.active } : row,
+      ),
+    );
+    audit(area, `Changed active state for ${id}`);
+  };
+  return (
+    <section className="support-admin">
+      <div className="support-page-heading">
+        <div>
+          <span>BUILD 09 · CONTROLLED ADMINISTRATION</span>
+          <h1>Support Desk administration</h1>
+          <p>
+            Govern master data, routing, calendars, imports, backups and data
+            quality.
+          </p>
+        </div>
+      </div>
+      <div className="admin-tabs">
+        {(
+          [
+            ["categories", "Categories"],
+            ["catalogue", "Catalogue"],
+            ["teams", "Teams"],
+            ["operations", "Operational controls"],
+            ["routing", "Approval routes"],
+            ["codes", "Reasons & codes"],
+            ["data", "Import & backup"],
+            ["quality", "Data quality"],
+            ["audit", "Edit history"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            className={tab === id ? "active" : ""}
+            onClick={() => setTab(id)}
+            key={id}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "categories" && (
+        <MasterTable
+          title="Ticket categories & subcategories"
+          form={
+            <>
+              <input
+                placeholder="Category name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+              <input
+                placeholder="Subcategories, comma separated"
+                value={details}
+                onChange={(e) => setDetails(e.target.value)}
+              />
+              <button onClick={addCategory}>Add category</button>
+            </>
+          }
+          head={["Category", "Subcategories", "State", "Action"]}
+          rows={categories.map((row) => (
+            <div key={row.id}>
+              <strong>{row.name}</strong>
+              <span>{row.subcategories.join(" · ")}</span>
+              <em>{row.active ? "Active" : "Inactive"}</em>
+              <button
+                onClick={() =>
+                  toggle(categories, setCategories, row.id, "Ticket categories")
+                }
+              >
+                {row.active ? "Deactivate" : "Activate"}
+              </button>
+            </div>
+          ))}
+        />
+      )}
+      {tab === "catalogue" && (
+        <MasterTable
+          title="Service catalogue definitions"
+          form={
+            <>
+              <input
+                placeholder="Service name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+              <input
+                placeholder="Category"
+                value={details}
+                onChange={(e) => setDetails(e.target.value)}
+              />
+              <select
+                value={approval}
+                onChange={(e) => setApproval(e.target.value as typeof approval)}
+              >
+                <option>None</option>
+                <option>Department</option>
+                <option>Department + IT</option>
+              </select>
+              <input
+                type="number"
+                value={hours}
+                onChange={(e) => setHours(Number(e.target.value))}
+              />
+              <button onClick={addCatalogue}>Add service</button>
+            </>
+          }
+          head={["Service", "Category", "Approval route", "Target", "Fields"]}
+          rows={catalogue.map((row) => (
+            <div key={row.id}>
+              <strong>{row.title}</strong>
+              <span>{row.category}</span>
+              <span>{row.approval}</span>
+              <span>{row.slaHours} hours</span>
+              <span>{row.fields.join(" · ")}</span>
+            </div>
+          ))}
+        />
+      )}
+      {tab === "teams" && (() => {
+        const selectedTeam = teams.find((team) => team.id === selectedTeamId) || teams[0];
+        return <section className="admin-team-directory"><header><div><span>ASSIGNMENT DIRECTORY</span><h2>Teams and routing groups</h2><p>Select a team to review its accountable lead, shared mailbox and members. Create a new group only when the operating model changes.</p></div><button className="support-primary" type="button" onClick={() => setShowTeamCreate((open) => !open)}>{showTeamCreate ? "Cancel" : "Create team"}</button></header>{showTeamCreate && <section className="admin-team-create"><label>Team name<input placeholder="e.g. Network Operations" value={name} onChange={(event) => setName(event.target.value)}/></label><label>Shared mailbox<input type="email" placeholder="team@glasscolabs.com" value={email} onChange={(event) => setEmail(event.target.value)}/></label><label>Accountable lead<select value={lead} onChange={(event) => setLead(event.target.value)}><option value="">Select lead</option>{operations.agents.filter((agent) => agent.active).map((agent) => <option key={agent.id}>{agent.name}</option>)}</select></label><button className="support-primary" type="button" onClick={addTeam}>Create team</button></section>}<div className="admin-team-layout"><nav aria-label="Assignment teams">{teams.map((team) => <button className={team.id === selectedTeam?.id ? "selected" : ""} type="button" key={team.id} onClick={() => setSelectedTeamId(team.id)}><span><strong>{team.name}</strong><small>{team.email}</small></span><em className={team.active ? "active" : "inactive"}>{team.active ? "Active" : "Inactive"}</em><b>{team.members.length || 0} members</b></button>)}</nav>{selectedTeam && <article className="admin-team-detail"><header><div><span>TEAM PROFILE</span><h3>{selectedTeam.name}</h3><p>{selectedTeam.active ? "Available for controlled assignment and routing." : "This group is inactive and should not receive new work."}</p></div><button type="button" onClick={() => toggle(teams, setTeams, selectedTeam.id, "Assignment teams")}>{selectedTeam.active ? "Deactivate team" : "Activate team"}</button></header><dl><div><dt>Shared mailbox</dt><dd>{selectedTeam.email}</dd></div><div><dt>Accountable lead</dt><dd>{selectedTeam.lead || "Not assigned"}</dd></div><div><dt>Members</dt><dd>{selectedTeam.members.length ? selectedTeam.members.join(" · ") : "No members assigned"}</dd></div><div><dt>Operating status</dt><dd>{selectedTeam.active ? "Active assignment group" : "Inactive"}</dd></div></dl><p className="admin-team-guidance">Agent roles and category routing are maintained under <b>Operational controls</b>. This keeps team identity separate from day-to-day routing rules.</p></article>}</div></section>;
+      })()}
+      {tab === "operations" && (
+        <section className="admin-operations">
+          <section className="support-panel admin-master">
+            <header>
+              <div>
+                <h2>Agent roster</h2>
+                <small>
+                  Only active agents can be selected by the automated routing
+                  rules.
+                </small>
+              </div>
+            </header>
+            <div className="admin-table">
+              <div
+                className="head"
+                style={{ gridTemplateColumns: "1.2fr 1.4fr 1fr .7fr" }}
+              >
+                <span>Agent</span>
+                <span>Business email</span>
+                <span>Operational role</span>
+                <span>State</span>
+              </div>
+              {operations.agents.map((agent) => (
+                <div
+                  key={agent.id}
+                  style={{ gridTemplateColumns: "1.2fr 1.4fr 1fr .7fr" }}
+                >
+                  <strong>{agent.name}</strong>
+                  <span>{agent.email}</span>
+                  <span>{agent.role}</span>
+                  <button
+                    onClick={() => {
+                      setOperations((current) => ({
+                        ...current,
+                        agents: current.agents.map((row) =>
+                          row.id === agent.id
+                            ? { ...row, active: !row.active }
+                            : row,
+                        ),
+                      }));
+                      audit(
+                        "Agent roster",
+                        `${agent.active ? "Deactivated" : "Activated"} ${agent.name}`,
+                      );
+                    }}
+                  >
+                    {agent.active ? "Active" : "Inactive"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="support-panel admin-master">
+            <header>
+              <div>
+                <h2>Category-to-agent routing</h2>
+                <small>
+                  New tickets are sent to the primary active owner, with the
+                  fallback used where primary ownership is unavailable.
+                </small>
+              </div>
+            </header>
+            <div className="admin-table">
+              <div
+                className="head"
+                style={{ gridTemplateColumns: "1.2fr 1fr 1fr" }}
+              >
+                <span>Ticket category</span>
+                <span>Primary owner</span>
+                <span>Fallback owner</span>
+              </div>
+              {operations.routes.map((route) => (
+                <div
+                  key={route.category}
+                  style={{ gridTemplateColumns: "1.2fr 1fr 1fr" }}
+                >
+                  <strong>{route.category}</strong>
+                  <select
+                    value={route.primary}
+                    onChange={(e) => {
+                      setOperations((current) => ({
+                        ...current,
+                        routes: current.routes.map((row) =>
+                          row.category === route.category
+                            ? { ...row, primary: e.target.value }
+                            : row,
+                        ),
+                      }));
+                      audit(
+                        "Category routing",
+                        `Changed primary owner for ${route.category}`,
+                      );
+                    }}
+                  >
+                    {operations.agents
+                      .filter((agent) => agent.active)
+                      .map((agent) => (
+                        <option key={agent.id}>{agent.name}</option>
+                      ))}
+                  </select>
+                  <select
+                    value={route.fallback}
+                    onChange={(e) => {
+                      setOperations((current) => ({
+                        ...current,
+                        routes: current.routes.map((row) =>
+                          row.category === route.category
+                            ? { ...row, fallback: e.target.value }
+                            : row,
+                        ),
+                      }));
+                      audit(
+                        "Category routing",
+                        `Changed fallback owner for ${route.category}`,
+                      );
+                    }}
+                  >
+                    {operations.agents
+                      .filter((agent) => agent.active)
+                      .map((agent) => (
+                        <option key={agent.id}>{agent.name}</option>
+                      ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="support-panel admin-master">
+            <header>
+              <div>
+                <h2>Monthly KPI report ownership</h2>
+                <small>
+                  Sets the accountable recipient for the monthly management
+                  pack. Downloaded data remains available from Reports &amp;
+                  Analytics.
+                </small>
+              </div>
+            </header>
+            <div className="admin-add">
+              <input
+                value={operations.monthlyReport.owner}
+                onChange={(e) =>
+                  setOperations((current) => ({
+                    ...current,
+                    monthlyReport: {
+                      ...current.monthlyReport,
+                      owner: e.target.value,
+                    },
+                  }))
+                }
+                placeholder="Report owner"
+              />
+              <input
+                value={operations.monthlyReport.email}
+                onChange={(e) =>
+                  setOperations((current) => ({
+                    ...current,
+                    monthlyReport: {
+                      ...current.monthlyReport,
+                      email: e.target.value,
+                    },
+                  }))
+                }
+                placeholder="Owner email"
+              />
+              <label>
+                Day of month
+                <input
+                  type="number"
+                  min="1"
+                  max="28"
+                  value={operations.monthlyReport.day}
+                  onChange={(e) =>
+                    setOperations((current) => ({
+                      ...current,
+                      monthlyReport: {
+                        ...current.monthlyReport,
+                        day: Number(e.target.value),
+                      },
+                    }))
+                  }
+                />
+              </label>
+              <button
+                className="support-primary"
+                onClick={() =>
+                  audit(
+                    "Monthly KPI ownership",
+                    `Monthly report owner set to ${operations.monthlyReport.owner} on day ${operations.monthlyReport.day}`,
+                  )
+                }
+              >
+                Save ownership
+              </button>
+            </div>
+          </section>
+          <section className="support-panel admin-operation-note">
+            <strong>SLA and escalation controls</strong>
+            <span>
+              Priority-level first response, resolution and escalation
+              recipients are governed in{" "}
+              <b>SLA &amp; notifications → SLA policy</b>. Changes there are
+              timestamped with the administrator identity.
+            </span>
+          </section>
+        </section>
+      )}
+      {tab === "routing" && (
+        <MasterTable
+          title="Department approval & escalation routing"
+          form={
+            <>
+              <input
+                placeholder="Department"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+              <input
+                placeholder="Manager approver email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <input
+                placeholder="IT approver email"
+                value={lead}
+                onChange={(e) => setLead(e.target.value)}
+              />
+              <input
+                placeholder="Escalation recipient"
+                value={details}
+                onChange={(e) => setDetails(e.target.value)}
+              />
+              <button onClick={addRoute}>Add route</button>
+            </>
+          }
+          head={[
+            "Department",
+            "Manager approver",
+            "IT approver",
+            "Escalation",
+            "State",
+          ]}
+          rows={routes.map((row) => (
+            <div key={row.id}>
+              <strong>{row.department}</strong>
+              <span>{row.managerApprover}</span>
+              <span>{row.itApprover}</span>
+              <span>{row.escalationRecipient}</span>
+              <em>Active</em>
+            </div>
+          ))}
+        />
+      )}
+      {tab === "codes" && (
+        <MasterTable
+          title="Waiting reasons & resolution codes"
+          form={
+            <>
+              <select
+                value={details}
+                onChange={(e) => setDetails(e.target.value)}
+              >
+                <option>Waiting reason</option>
+                <option>Resolution code</option>
+              </select>
+              <input
+                placeholder="Controlled reason or code"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+              <button onClick={addCode}>Add record</button>
+            </>
+          }
+          head={["Type", "Value", "State", "Action"]}
+          rows={codes.map((row) => (
+            <div key={row.id}>
+              <strong>{row.kind}</strong>
+              <span>{row.value}</span>
+              <em>{row.active ? "Active" : "Inactive"}</em>
+              <button
+                onClick={() =>
+                  toggle(codes, setCodes, row.id, "Reasons and codes")
+                }
+              >
+                {row.active ? "Deactivate" : "Activate"}
+              </button>
+            </div>
+          ))}
+        />
+      )}
+      {tab === "data" && (
+        <section className="admin-data-grid">
+          <article className="support-panel">
+            <h2>CSV master-data import</h2>
+            <p>
+              Download the controlled format, complete it without changing
+              headers, then validate and import categories, teams and approval
+              routes.
+            </p>
+            <div>
+              <button onClick={template}>Download CSV template</button>
+              <button
+                className="support-primary"
+                onClick={() => fileRef.current?.click()}
+              >
+                Select CSV to import
+              </button>
+              <input
+                hidden
+                ref={fileRef}
+                type="file"
+                accept=".csv"
+                onChange={(e) =>
+                  e.target.files?.[0] && importCsv(e.target.files[0])
+                }
+              />
+            </div>
+          </article>
+          <article className="support-panel">
+            <h2>Complete controlled backup</h2>
+            <p>
+              Export configuration, tickets, service requests, relationships and
+              administrative audit history in one dated JSON package.
+            </p>
+            <button className="support-primary" onClick={exportPackage}>
+              Export complete backup
+            </button>
+          </article>
+          <article className="support-panel">
+            <h2>Business calendar</h2>
+            <p>
+              {policy.timezone} · {policy.businessStart}–{policy.businessEnd} ·{" "}
+              {policy.workingDays.length} working days
+            </p>
+            <button onClick={() => setTab("audit")}>
+              Review governed changes
+            </button>
+          </article>
+        </section>
+      )}
+      {tab === "quality" && (
+        <section className="support-panel admin-quality">
+          <header>
+            <div>
+              <h2>Configuration data-quality dashboard</h2>
+              <small>
+                Duplicates, orphan assignments, missing approval mapping and
+                incomplete definitions.
+              </small>
+            </div>
+            <strong>{quality.length} issue types</strong>
+          </header>
+          <div className="head">
+            <span>Severity</span>
+            <span>Issue</span>
+            <span>Records</span>
+            <span>Recommended action</span>
+          </div>
+          {quality.map((row) => (
+            <div key={row.issue}>
+              <em className={row.severity.toLowerCase()}>{row.severity}</em>
+              <strong>{row.issue}</strong>
+              <span>{row.count}</span>
+              <span>{row.detail}</span>
+            </div>
+          ))}
+          {!quality.length && (
+            <p>No configuration-quality exceptions detected.</p>
+          )}
+        </section>
+      )}
+      {tab === "audit" && (
+        <section className="support-panel admin-audit">
+          <header>
+            <div>
+              <h2>Immutable administration history</h2>
+              <small>
+                Every master-data and configuration change made through this
+                screen.
+              </small>
+            </div>
+          </header>
+          <div className="head">
+            <span>Area</span>
+            <span>Change</span>
+            <span>Actor</span>
+            <span>Timestamp</span>
+          </div>
+          {[...audits].reverse().map((row) => (
+            <div key={row.id}>
+              <strong>{row.area}</strong>
+              <span>{row.event}</span>
+              <span>{row.actor}</span>
+              <span>{new Date(row.at).toLocaleString("en-IN")}</span>
+            </div>
+          ))}
+          {!audits.length && <p>No administrative changes recorded yet.</p>}
+        </section>
+      )}
+    </section>
+  );
+}
+function MasterTable({
+  title,
+  form,
+  head,
+  rows,
+}: {
+  title: string;
+  form: React.ReactNode;
+  head: string[];
+  rows: React.ReactNode[];
+}) {
+  return (
+    <section className="support-panel admin-master">
+      <header>
+        <h2>{title}</h2>
+      </header>
+      <div className="admin-add">{form}</div>
+      <div className="admin-table">
+        <div
+          className="head"
+          style={{
+            gridTemplateColumns: `repeat(${head.length},minmax(130px,1fr))`,
+          }}
+        >
+          {head.map((h) => (
+            <span key={h}>{h}</span>
+          ))}
+        </div>
+        {rows}
+      </div>
+    </section>
+  );
+}
