@@ -24,6 +24,11 @@ export default function CustodyMovements() {
   const [form, setForm] = useState(blank)
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
+  const [registerSearch, setRegisterSearch] = useState('')
+  const [departmentFilter, setDepartmentFilter] = useState('all')
+  const [userFilter, setUserFilter] = useState('all')
+  const [assetFilter, setAssetFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [activeRole] = useLocalStore<RoleId>('itms.active-role.v1', 'administrator');const canRequest=canDo(activeRole,'request.custody');const canManagerApprove=canDo(activeRole,'approve.asset-manager');const canHeadApprove=canDo(activeRole,'approve.it-head')
   const custody = useMemo(() => deriveCustody(allocations, movements, assets), [allocations, movements, assets])
   const pendingAssets = new Set(movements.filter((item) => item.state !== 'Completed').map((item) => item.assetId))
@@ -32,6 +37,20 @@ export default function CustodyMovements() {
   const label = (assetId: string) => { const asset = assets.find((item) => item.id === assetId); const model = models.find((item) => item.id === asset?.modelId); return `${asset?.assetId ?? 'Unavailable'} · ${model ? `${model.brand} ${model.name}` : 'Model unavailable'}` }
   const userLabel = (id: string) => { const user = users.find((item) => item.id === id); return user ? `${user.employeeCode} · ${user.name}` : 'Unavailable' }
   const stamp = (value: string) => value ? new Date(value).toLocaleString('en-IN') : 'Pending'
+  const filteredMovements = useMemo(() => {
+    const query = registerSearch.trim().toLowerCase()
+    return movements.filter((item) => {
+      const fromUser = users.find((user) => user.id === item.fromUserId)
+      const toUser = users.find((user) => user.id === item.toUserId)
+      const involvedUsers = [fromUser, toUser].filter(Boolean) as User[]
+      const hasDepartment = departmentFilter === 'all' || involvedUsers.some((user) => user.departmentId === departmentFilter) || item.toDepartmentId === departmentFilter
+      const hasUser = userFilter === 'all' || item.fromUserId === userFilter || item.toUserId === userFilter
+      const hasAsset = assetFilter === 'all' || item.assetId === assetFilter
+      const hasStatus = statusFilter === 'all' || item.state === statusFilter
+      const searchable = `${item.code} ${item.kind} ${label(item.assetId)} ${userLabel(item.fromUserId)} ${userLabel(item.toUserId)} ${item.reason}`.toLowerCase()
+      return hasDepartment && hasUser && hasAsset && hasStatus && (!query || searchable.includes(query))
+    })
+  }, [movements, registerSearch, departmentFilter, userFilter, assetFilter, statusFilter, users, assets, models])
 
   function create(event: FormEvent) {
     event.preventDefault()
@@ -60,8 +79,16 @@ export default function CustodyMovements() {
       <div className="approval-preview"><strong>Approval route</strong><span>1. IT Asset Manager</span><span>2. IT Head</span><span>3. Custody ledger updates</span></div><div className="form-actions"><button type="button" onClick={() => setOpen(false)}>Cancel</button><button className="primary-action" type="submit">Submit movement</button></div>
     </form>}
     {message && <div className="success-message">✓ {message}</div>}
+    <div className="allocation-register-filters" aria-label="Filter transfers and returns">
+      <label className="allocation-filter-search">Search movement register<input value={registerSearch} onChange={(event) => setRegisterSearch(event.target.value)} placeholder="Movement ID, employee, asset, serial or reason" /></label>
+      <label>Department<select value={departmentFilter} onChange={(event) => { setDepartmentFilter(event.target.value); setUserFilter('all') }}><option value="all">All departments</option>{departments.filter((item) => item.status === 'Active').map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label>
+      <label>Employee<select value={userFilter} onChange={(event) => setUserFilter(event.target.value)}><option value="all">All employees</option>{users.filter((item) => item.status === 'Active' && (departmentFilter === 'all' || item.departmentId === departmentFilter)).map((item) => <option value={item.id} key={item.id}>{item.employeeCode} · {item.name}</option>)}</select></label>
+      <label>Inventory code<select value={assetFilter} onChange={(event) => setAssetFilter(event.target.value)}><option value="all">All inventory codes</option>{assets.filter((item) => movements.some((movement) => movement.assetId === item.id)).map((item) => <option value={item.id} key={item.id}>{item.assetId}</option>)}</select></label>
+      <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option>{[...new Set(movements.map((item) => item.state))].map((item) => <option value={item} key={item}>{item}</option>)}</select></label>
+      <div className="allocation-filter-footer"><span>Showing <strong>{filteredMovements.length}</strong> of {movements.length} movements</span><button type="button" className="secondary-action" onClick={() => { setRegisterSearch(''); setDepartmentFilter('all'); setUserFilter('all'); setAssetFilter('all'); setStatusFilter('all') }}>Clear filters</button></div>
+    </div>
     <div className="master-summary"><div><span>Movement records</span><strong>{movements.length}</strong></div><div><span>Pending approval</span><strong>{movements.filter((item) => item.state !== 'Completed').length}</strong></div><div><span>Completed</span><strong>{movements.filter((item) => item.state === 'Completed').length}</strong></div></div>
-    <DataTable rows={[...movements].reverse()} rowKey={(item) => item.id} columns={[
+    <DataTable rows={[...filteredMovements].reverse()} rowKey={(item) => item.id} columns={[
       { key: 'code', label: 'Movement', sticky: true, width: '180px', render: (item) => <><strong>{item.code}</strong><small>{item.kind}</small></> }, { key: 'asset', label: 'Asset', width: '260px', render: (item) => label(item.assetId) }, { key: 'from', label: 'From employee', width: '220px', render: (item) => userLabel(item.fromUserId) }, { key: 'to', label: 'To / disposition', width: '220px', render: (item) => item.kind === 'Return' ? 'IT stock inspection' : userLabel(item.toUserId) }, { key: 'date', label: 'Effective date', width: '130px', render: (item) => item.effectiveDate }, { key: 'state', label: 'Status', width: '170px', render: (item) => <span className={`custody-state ${item.state === 'Completed' ? 'active' : 'pending'}`}>{item.state}</span> }, { key: 'trail', label: 'Approval history', width: '300px', render: (item) => <><small>Requested {stamp(item.requestedAt)}</small><small>Manager {stamp(item.assetManagerApprovedAt)}</small><small>IT Head {stamp(item.itHeadApprovedAt)}</small></> }, { key: 'action', label: 'Action', width: '170px', render: (item) => item.state === 'Pending Asset Manager' ? canManagerApprove?<button className="table-action" type="button" onClick={() => managerApprove(item.id)}>Manager approve</button>:'Awaiting Asset Manager' : item.state === 'Pending IT Head' ? canHeadApprove?<button className="table-action" type="button" onClick={() => headApprove(item.id)}>IT Head approve</button>:'Awaiting IT Head' : 'Completed' },
     ]} empty={<div className="empty-state"><strong>No transfer or return records</strong><p>Create a movement when custody must change.</p></div>} />
   </section>

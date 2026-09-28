@@ -1,0 +1,12 @@
+import { collection, doc, getDoc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore'
+import { firestore } from './firebase'
+
+export type FacilitiesMaterialReferral={id:string;facilitiesRequestId:string;facilitiesRequestCode:string;departmentId:string;departmentName:string;sectionId:string;sectionName:string;assetId:string;requirement:string;status:'Pending NCR action'|'NCR created'|'Cancelled';createdAt:string;createdBy:string;ncrRequestId?:string;ncrRequestCode?:string}
+
+export async function createFacilitiesMaterialReferral(input:Omit<FacilitiesMaterialReferral,'id'|'status'|'createdAt'>){if(!firestore)throw new Error('Material referral requires Firebase.');const id=`facilities-${input.facilitiesRequestId}-material`,row:FacilitiesMaterialReferral={...input,id,status:'Pending NCR action',createdAt:new Date().toISOString()};await setDoc(doc(firestore,'facilitiesMaterialReferrals',id),row,{merge:false});return row}
+
+export function subscribeFacilitiesMaterialReferrals(receive:(rows:FacilitiesMaterialReferral[])=>void){if(!firestore)return()=>undefined;return onSnapshot(collection(firestore,'facilitiesMaterialReferrals'),snapshot=>receive(snapshot.docs.map(entry=>entry.data() as FacilitiesMaterialReferral).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))),()=>receive([]))}
+
+export async function linkFacilitiesMaterialReferral(id:string,ncrRequestId:string,ncrRequestCode:string){if(!firestore)throw new Error('Material referral requires Firebase.');await updateDoc(doc(firestore,'facilitiesMaterialReferrals',id),{status:'NCR created',ncrRequestId,ncrRequestCode})}
+
+export async function resumeFacilitiesAfterReceipt(requestId:string,ncrRequestId:string,ncrRequestCode:string,grnNumber:string,actor:string){if(!firestore)throw new Error('Facilities receipt handoff requires Firebase.');const reference=doc(firestore,'facilitiesRequests',requestId),snapshot=await getDoc(reference);if(!snapshot.exists())throw new Error('The linked Facilities request no longer exists.');const row=snapshot.data() as{state:string;audit?:{at:string;actor:string;event:string}[]};if(row.state!=='Waiting for material')return false;const now=new Date().toISOString();await updateDoc(reference,{state:'In progress',waitingReason:'',nextActionAt:'',materialNcrId:ncrRequestId,materialNcrCode:ncrRequestCode,materialGrnNumber:grnNumber,updatedAt:now,audit:[...(row.audit||[]),{at:now,actor,event:`Material received · ${ncrRequestCode} · GRN ${grnNumber}; work resumed`}]});return true}

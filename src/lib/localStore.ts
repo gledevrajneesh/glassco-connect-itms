@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { cloudOperationalReady, isOperationalStoreKey, isSharedValueStoreKey, subscribeOperationalStore, subscribeSharedValueStore, syncOperationalStore, syncSharedValueStore } from './cloudStore'
 
 export function useLocalStore<T>(key: string, initialValue: T) {
+  const isArrayStore = Array.isArray(initialValue)
+  const isSharedValue = isSharedValueStoreKey(key)
+  const isCloudManagedStore = (isArrayStore && isOperationalStoreKey(key)) || isSharedValue
   const [value, setValue] = useState<T>(() => {
+    // Once a business store is cloud-managed, Firestore is its source of truth.
+    // Do not briefly render a stale browser copy while the subscription connects.
+    if (isCloudManagedStore && cloudOperationalReady()) return initialValue
     try {
       const stored = window.localStorage.getItem(key)
       return stored ? (JSON.parse(stored) as T) : initialValue
@@ -11,8 +17,7 @@ export function useLocalStore<T>(key: string, initialValue: T) {
     }
   })
   const [cloudEpoch, setCloudEpoch] = useState(0)
-  const isArrayStore = Array.isArray(initialValue)
-  const isSharedValue = isSharedValueStoreKey(key)
+  const cloudSeed = useRef(initialValue)
   const cloudActive = useRef(false)
   const lastCloudValue = useRef('')
 
@@ -23,7 +28,7 @@ export function useLocalStore<T>(key: string, initialValue: T) {
   }, [])
 
   useEffect(() => {
-    if ((!isArrayStore || !isOperationalStoreKey(key)) && !isSharedValue || !cloudOperationalReady()) return
+    if (!isCloudManagedStore || !cloudOperationalReady()) return
     let cancelled = false
     let unsubscribe: () => void = () => undefined
     const receive=(records:unknown) => {
@@ -33,17 +38,19 @@ export function useLocalStore<T>(key: string, initialValue: T) {
       setValue(records as T)
     }
     const connect = isSharedValue
-      ? subscribeSharedValueStore(key, receive, value)
-      : subscribeOperationalStore<unknown>(key, receive, Array.isArray(value) ? value as Record<string, unknown>[] : [])
+      ? subscribeSharedValueStore(key, receive, cloudSeed.current)
+      : subscribeOperationalStore<unknown>(key, receive, Array.isArray(cloudSeed.current) ? cloudSeed.current as Record<string, unknown>[] : [])
     void connect.then((stop) => { if (cancelled) stop(); else unsubscribe = stop }).catch((error) => {
       window.dispatchEvent(new CustomEvent('itms-cloud-error', { detail: error instanceof Error ? error.message : 'Cloud synchronization failed' }))
     })
     return () => { cancelled = true; cloudActive.current = false; unsubscribe() }
-  }, [cloudEpoch, isArrayStore, isSharedValue, key])
+  }, [cloudEpoch, isCloudManagedStore, isSharedValue, key])
 
   useEffect(() => {
-    window.localStorage.setItem(key, JSON.stringify(value))
-    if (((Array.isArray(value) && isOperationalStoreKey(key)) || isSharedValue) && cloudActive.current) {
+    // Browser storage is only a convenience cache for UI state and drafts.
+    // Operational and shared business data is intentionally never mirrored back.
+    if (!isCloudManagedStore) window.localStorage.setItem(key, JSON.stringify(value))
+    if (isCloudManagedStore && cloudActive.current) {
       const serialized = JSON.stringify(value)
       if (serialized !== lastCloudValue.current) {
         lastCloudValue.current = serialized
@@ -51,7 +58,7 @@ export function useLocalStore<T>(key: string, initialValue: T) {
         void request.catch((error) => window.dispatchEvent(new CustomEvent('itms-cloud-error', { detail: error instanceof Error ? error.message : 'Cloud synchronization failed' })))
       }
     }
-  }, [isSharedValue, key, value])
+  }, [isCloudManagedStore, isSharedValue, key, value])
 
   return [value, setValue] as const
 }

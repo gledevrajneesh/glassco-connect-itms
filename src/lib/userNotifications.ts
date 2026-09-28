@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore'
+import { addDoc, collection, doc, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore'
 import { firestore } from './firebase'
 
 export type UserNotification = {
@@ -6,8 +6,15 @@ export type UserNotification = {
   recipientEmail: string
   title: string
   message: string
-  category: 'Access' | 'System'
+  category: 'Access' | 'System' | 'Operational' | 'Approval' | 'Integration'
   application: string
+  recordId?: string
+  recordCode?: string
+  route?: string
+  action?: string
+  priority?: 'Information' | 'Attention' | 'Urgent'
+  dueAt?: string
+  idempotencyKey?: string
   createdAt: string
   createdBy: string
   readAt?: string
@@ -15,7 +22,8 @@ export type UserNotification = {
 
 export async function createUserNotification(notification: Omit<UserNotification, 'id' | 'readAt'>) {
   if (!firestore) return false
-  await addDoc(collection(firestore, 'userNotifications'), notification)
+  if (notification.idempotencyKey) await setDoc(doc(firestore, 'userNotifications', notification.idempotencyKey), notification, { merge: false })
+  else await addDoc(collection(firestore, 'userNotifications'), notification)
   return true
 }
 

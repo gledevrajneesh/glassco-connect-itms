@@ -1,56 +1,1235 @@
-import React, { useMemo, useState } from 'react'
-import DataTable from '../../components/DataTable'
-import Icon from '../../components/Icon'
-import { deriveCustody, type CustodyMovement } from '../../lib/custodyLifecycle'
-import { useLocalStore } from '../../lib/localStore'
-import type { MaintenanceRecord } from '../maintenance/MaintenanceWorkspace'
-import type { DisposalRecord, VerificationRecord } from '../assurance/AssuranceWorkspace'
-import type { RetirementRecord } from '../retirement/RetirementWorkspace'
-import './ReportsWorkspace.css'
+import React, { useMemo, useState } from "react";
+import DataTable from "../../components/DataTable";
+import Icon from "../../components/Icon";
+import {
+  deriveCustody,
+  type CustodyMovement,
+} from "../../lib/custodyLifecycle";
+import { useLocalStore } from "../../lib/localStore";
+import type { MaintenanceRecord } from "../maintenance/MaintenanceWorkspace";
+import type {
+  DisposalRecord,
+  VerificationRecord,
+} from "../assurance/AssuranceWorkspace";
+import type { RetirementRecord } from "../retirement/RetirementWorkspace";
+import "./ReportsWorkspace.css";
 
-type Basic = { id: string; code: string; name: string }
-type Asset = { id: string; assetId: string; typeId: string; modelId: string; locationId: string; serialNumber: string; purchaseDate: string; cost: number; stockStatus: string; condition: string }
-type Model = { id: string; brand: string; name: string }
-type User = { id: string; employeeCode: string; name: string; departmentId: string }
-type Allocation = { id: string; code: string; userId: string; assetIds: string[]; allocationDate: string; state: string }
-type Incident = { id: string; code: string; userId: string; assetId: string; type: string; severity: string; eventDate: string; notes: string; status: string }
-type ReportKind = 'Asset register' | 'Current custody' | 'Repair history' | 'Maintenance' | 'User asset & expenditure summary' | 'Department asset & expenditure summary' | 'Item group value summary' | 'Highest-value assets' | 'Verification & exceptions' | 'Disposal & write-off' | 'Retirement & circularity'
-type ReportRow = { id: string; reference: string; itemGroup: string; item: string; user: string; department: string; location: string; date: string; status: string; detail: string; value: number }
-type ChartPoint = { label: string; value: number; note?: string }
-const today = () => new Date().toISOString().slice(0, 10)
-const esc = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`
+type Basic = { id: string; code: string; name: string };
+type Asset = {
+  id: string;
+  assetId: string;
+  typeId: string;
+  modelId: string;
+  locationId: string;
+  serialNumber: string;
+  purchaseDate: string;
+  cost: number;
+  stockStatus: string;
+  condition: string;
+  specifications?: Record<string, string>;
+};
+type Model = { id: string; brand: string; name: string };
+type User = {
+  id: string;
+  employeeCode: string;
+  name: string;
+  departmentId: string;
+};
+type Allocation = {
+  id: string;
+  code: string;
+  userId: string;
+  assetIds: string[];
+  allocationDate: string;
+  state: string;
+};
+type Incident = {
+  id: string;
+  code: string;
+  userId: string;
+  assetId: string;
+  type: string;
+  severity: string;
+  eventDate: string;
+  notes: string;
+  status: string;
+};
+type ReceiptLine = {
+  id: string;
+  typeId: string;
+  modelId: string;
+  quantity: number;
+};
+type Receipt = {
+  id: string;
+  grn: string;
+  groupId?: string;
+  vendorId: string;
+  invoiceNumber: string;
+  purchaseOrder: string;
+  receivedDate: string;
+  receivedBy: string;
+  typeId: string;
+  modelId: string;
+  quantity: number;
+  lines?: ReceiptLine[];
+  outcome: string;
+  inspectionNote: string;
+  voidReason?: string;
+};
+type ReportKind =
+  | "GRN receipt register"
+  | "Asset register"
+  | "Current custody"
+  | "Repair history"
+  | "Maintenance"
+  | "User asset & expenditure summary"
+  | "Department asset & expenditure summary"
+  | "Item group value summary"
+  | "Highest-value assets"
+  | "Verification & exceptions"
+  | "Disposal & write-off"
+  | "Retirement & circularity";
+type ReportRow = {
+  id: string;
+  reference: string;
+  itemGroup: string;
+  item: string;
+  user: string;
+  department: string;
+  location: string;
+  date: string;
+  status: string;
+  detail: string;
+  value: number;
+};
+type ChartPoint = { label: string; value: number; note?: string };
+const today = () => new Date().toISOString().slice(0, 10);
+const esc = (value: unknown) =>
+  `"${String(value ?? "").replaceAll('"', '""')}"`;
 
 export default function ReportsWorkspace() {
-  const [assets] = useLocalStore<Asset[]>('itms.assets.v1', []); const [types] = useLocalStore<Basic[]>('itms.asset-types.v1', []); const [models] = useLocalStore<Model[]>('itms.asset-models.v1', []); const [locations] = useLocalStore<Basic[]>('itms.locations.v1', []); const [departments] = useLocalStore<Basic[]>('itms.departments.v1', []); const [users] = useLocalStore<User[]>('itms.users.v1', []); const [allocations] = useLocalStore<Allocation[]>('itms.allocations.v1', []); const [movements] = useLocalStore<CustodyMovement[]>('itms.custody-movements.v1', []); const [maintenance] = useLocalStore<MaintenanceRecord[]>('itms.asset-maintenance.v1', []); const [incidents] = useLocalStore<Incident[]>('itms.asset-incidents.v1', []); const [verifications] = useLocalStore<VerificationRecord[]>('itms.asset-verifications.v1', []); const [disposals] = useLocalStore<DisposalRecord[]>('itms.asset-disposals.v1', []); const [retirements] = useLocalStore<RetirementRecord[]>('itms.asset-retirements.v1', [])
-  const [view, setView] = useState<'Management dashboard' | 'Report builder'>('Management dashboard'); const [report, setReport] = useState<ReportKind>('Asset register'); const [groupId, setGroupId] = useState('all'); const [locationId, setLocationId] = useState('all'); const [departmentId, setDepartmentId] = useState('all'); const [status, setStatus] = useState('all'); const [fromDate, setFromDate] = useState(''); const [toDate, setToDate] = useState(today())
-  const custody = useMemo(() => deriveCustody(allocations, movements, assets), [allocations, assets, movements]); const assetLabel = (id:string) => { const asset=assets.find((item)=>item.id===id); const model=models.find((item)=>item.id===asset?.modelId); return `${asset?.assetId??'Unavailable'} · ${model?`${model.brand} ${model.name}`:'Model unavailable'}` }; const typeName=(id:string)=>types.find((item)=>item.id===id)?.name??'Unavailable'; const locationName=(id:string)=>locations.find((item)=>item.id===id)?.name??'Unavailable'; const userName=(id:string)=>{const user=users.find((item)=>item.id===id);return user?`${user.employeeCode} · ${user.name}`:'Unassigned'}; const departmentName=(id:string)=>departments.find((item)=>item.id===id)?.name??'Unassigned'
+  const [assets] = useLocalStore<Asset[]>("itms.assets.v1", []);
+  const [receipts] = useLocalStore<Receipt[]>("itms.receipts.v1", []);
+  const [types] = useLocalStore<Basic[]>("itms.asset-types.v1", []);
+  const [models] = useLocalStore<Model[]>("itms.asset-models.v1", []);
+  const [locations] = useLocalStore<Basic[]>("itms.locations.v1", []);
+  const [departments] = useLocalStore<Basic[]>("itms.departments.v1", []);
+  const [users] = useLocalStore<User[]>("itms.users.v1", []);
+  const [allocations] = useLocalStore<Allocation[]>("itms.allocations.v1", []);
+  const [movements] = useLocalStore<CustodyMovement[]>(
+    "itms.custody-movements.v1",
+    [],
+  );
+  const [maintenance] = useLocalStore<MaintenanceRecord[]>(
+    "itms.asset-maintenance.v1",
+    [],
+  );
+  const [incidents] = useLocalStore<Incident[]>("itms.asset-incidents.v1", []);
+  const [verifications] = useLocalStore<VerificationRecord[]>(
+    "itms.asset-verifications.v1",
+    [],
+  );
+  const [disposals] = useLocalStore<DisposalRecord[]>(
+    "itms.asset-disposals.v1",
+    [],
+  );
+  const [retirements] = useLocalStore<RetirementRecord[]>(
+    "itms.asset-retirements.v1",
+    [],
+  );
+  const [view, setView] = useState<"Management dashboard" | "Report builder">(
+    "Management dashboard",
+  );
+  const [report, setReport] = useState<ReportKind>("GRN receipt register");
+  const [groupId, setGroupId] = useState("all");
+  const [locationId, setLocationId] = useState("all");
+  const [departmentId, setDepartmentId] = useState("all");
+  const [status, setStatus] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState(today());
+  const [reportPreviewOpen, setReportPreviewOpen] = useState(false);
+  const custody = useMemo(
+    () => deriveCustody(allocations, movements, assets),
+    [allocations, assets, movements],
+  );
+  const assetLabel = (id: string) => {
+    const asset = assets.find((item) => item.id === id);
+    const model = models.find((item) => item.id === asset?.modelId);
+    return `${asset?.assetId ?? "Unavailable"} · ${model ? `${model.brand} ${model.name}` : "Model unavailable"}`;
+  };
+  const typeName = (id: string) =>
+    types.find((item) => item.id === id)?.name ?? "Unavailable";
+  const locationName = (id: string) =>
+    locations.find((item) => item.id === id)?.name ?? "Unavailable";
+  const userName = (id: string) => {
+    const user = users.find((item) => item.id === id);
+    return user ? `${user.employeeCode} · ${user.name}` : "Unassigned";
+  };
+  const departmentName = (id: string) =>
+    departments.find((item) => item.id === id)?.name ?? "Unassigned";
   const allRows: ReportRow[] = (() => {
-    if (report === 'Asset register') return assets.map((asset)=>({id:asset.id,reference:asset.assetId,itemGroup:typeName(asset.typeId),item:assetLabel(asset.id),user:userName(custody.get(asset.id)?.userId??''),department:departmentName(users.find((item)=>item.id===custody.get(asset.id)?.userId)?.departmentId??''),location:locationName(asset.locationId),date:asset.purchaseDate,status:asset.stockStatus,detail:`${asset.condition} · S/N ${asset.serialNumber||'N/A'}`,value:asset.cost}))
-    if (report === 'Current custody') return [...custody.entries()].map(([assetId,held])=>{const asset=assets.find((item)=>item.id===assetId)!;const user=users.find((item)=>item.id===held.userId);return{id:assetId,reference:held.source,itemGroup:typeName(asset?.typeId),item:assetLabel(assetId),user:userName(held.userId),department:departmentName(user?.departmentId??''),location:locationName(asset?.locationId),date:held.since,status:'Active custody',detail:'Accountable employee custody',value:asset?.cost??0}})
-    if (report === 'Repair history') return [...incidents.filter((item)=>['Repair','Damaged','Breakage'].includes(item.type)).map((item)=>{const asset=assets.find((entry)=>entry.id===item.assetId);const user=users.find((entry)=>entry.id===item.userId);return{id:`incident-${item.id}`,reference:item.code,itemGroup:typeName(asset?.typeId??''),item:assetLabel(item.assetId),user:userName(item.userId),department:departmentName(user?.departmentId??''),location:locationName(asset?.locationId??''),date:item.eventDate,status:item.status,detail:`${item.type} · ${item.severity} · ${item.notes}`,value:0}}),...maintenance.filter((item)=>item.kind==='Repair'||item.outcome==='Repair completed').map((item)=>{const asset=assets.find((entry)=>entry.id===item.assetId);const held=custody.get(item.assetId);const user=users.find((entry)=>entry.id===held?.userId);return{id:`maintenance-${item.id}`,reference:item.code,itemGroup:typeName(asset?.typeId??''),item:assetLabel(item.assetId),user:userName(held?.userId??''),department:departmentName(user?.departmentId??''),location:locationName(asset?.locationId??''),date:item.performedDate||item.dueDate,status:item.state,detail:`${item.activity} · ${item.findings||item.outcome}`,value:item.cost}})]
-    if (report === 'Maintenance') return maintenance.map((item)=>{const asset=assets.find((entry)=>entry.id===item.assetId);return{id:item.id,reference:item.code,itemGroup:typeName(asset?.typeId??''),item:assetLabel(item.assetId),user:userName(custody.get(item.assetId)?.userId??''),department:'',location:locationName(asset?.locationId??''),date:item.performedDate||item.dueDate,status:item.state,detail:`${item.activity} · ${item.outcome||item.kind}`,value:item.cost}})
-    if (report === 'User asset & expenditure summary') return users.map((user)=>{const held=[...custody.entries()].filter(([,entry])=>entry.userId===user.id).map(([id])=>assets.find((asset)=>asset.id===id)).filter((asset):asset is Asset=>Boolean(asset));return{id:user.id,reference:user.employeeCode,itemGroup:'All assigned groups',item:`${held.length} currently allocated asset(s)`,user:user.name,department:departmentName(user.departmentId),location:'Multiple / current asset locations',date:today(),status:held.length?'Asset holder':'No current assets',detail:held.map((asset)=>asset.assetId).join(' | ')||'No assets allocated',value:held.reduce((sum,asset)=>sum+asset.cost,0)}}).sort((a,b)=>b.value-a.value)
-    if (report === 'Department asset & expenditure summary') return departments.map((department)=>{const memberIds=new Set(users.filter((user)=>user.departmentId===department.id).map((user)=>user.id));const held=[...custody.entries()].filter(([,entry])=>memberIds.has(entry.userId)).map(([id])=>assets.find((asset)=>asset.id===id)).filter((asset):asset is Asset=>Boolean(asset));return{id:department.id,reference:department.code,itemGroup:'All assigned groups',item:`${held.length} assets across ${memberIds.size} users`,user:'Department aggregate',department:department.name,location:'Multiple locations',date:today(),status:held.length?'Assets assigned':'No current assets',detail:held.map((asset)=>asset.assetId).join(' | ')||'No assets allocated',value:held.reduce((sum,asset)=>sum+asset.cost,0)}}).sort((a,b)=>b.value-a.value)
-    if (report === 'Item group value summary') return types.map((type)=>{const grouped=assets.filter((asset)=>asset.typeId===type.id);return{id:type.id,reference:type.code,itemGroup:type.name,item:`${grouped.length} registered asset(s)`,user:'All custodians',department:'All departments',location:'All locations',date:today(),status:'Portfolio summary',detail:`${grouped.filter((item)=>item.stockStatus==='In stock').length} in stock · ${grouped.filter((item)=>item.stockStatus==='Allocated').length} allocated`,value:grouped.reduce((sum,item)=>sum+item.cost,0)}}).filter((item)=>item.value||item.detail.startsWith('0')===false).sort((a,b)=>b.value-a.value)
-    if (report === 'Highest-value assets') return assets.map((asset)=>({id:asset.id,reference:asset.assetId,itemGroup:typeName(asset.typeId),item:assetLabel(asset.id),user:userName(custody.get(asset.id)?.userId??''),department:departmentName(users.find((item)=>item.id===custody.get(asset.id)?.userId)?.departmentId??''),location:locationName(asset.locationId),date:asset.purchaseDate,status:asset.stockStatus,detail:`${asset.condition} · ranked by acquisition value`,value:asset.cost})).sort((a,b)=>b.value-a.value)
-    if (report === 'Retirement & circularity') return retirements.flatMap((item)=>(item.assetIds?.length?item.assetIds:item.assetId?[item.assetId]:[]).map((assetId,index)=>{const asset=assets.find((entry)=>entry.id===assetId);return{id:`${item.id}-${assetId}`,reference:item.code,itemGroup:typeName(asset?.typeId??''),item:assetLabel(assetId),user:item.partyName,department:'',location:locationName(asset?.locationId??''),date:(item.completedAt||item.requestedAt).slice(0,10),status:item.state,detail:`${item.route} · Asset ${index+1}/${item.assetIds?.length||1} · ${item.reason} · ${item.reference||'No external reference'}`,value:index===0?item.estimatedValue:0}}))
-    if (report === 'Verification & exceptions') return verifications.map((item)=>{const asset=assets.find((entry)=>entry.id===item.assetId);return{id:item.id,reference:item.code,itemGroup:typeName(item.groupId),item:assetLabel(item.assetId),user:item.observedCustodian,department:'',location:item.observedLocation||locationName(asset?.locationId??''),date:item.verifiedDate,status:item.result,detail:item.notes,value:0}})
-    return disposals.map((item)=>{const asset=assets.find((entry)=>entry.id===item.assetId);return{id:item.id,reference:item.code,itemGroup:typeName(item.groupId),item:assetLabel(item.assetId),user:item.requestedBy,department:'',location:locationName(asset?.locationId??''),date:item.requestedAt.slice(0,10),status:item.state,detail:`${item.method} · ${item.reason}`,value:item.estimatedValue}})
-  })()
-  const rows = allRows.filter((row)=>{const group=groupId==='all'||row.itemGroup===typeName(groupId);const location=locationId==='all'||row.location===locationName(locationId);const department=departmentId==='all'||row.department===departmentName(departmentId);const state=status==='all'||row.status===status;const dates=(!fromDate||row.date>=fromDate)&&(!toDate||row.date<=toDate);return group&&location&&department&&state&&dates}); const statuses=[...new Set(allRows.map((item)=>item.status))].sort()
-  function downloadCsv(){const headers=['Reference','Item group','Item','User / custodian','Department','Location','Date','Status','Detail','Value'];const csv=[headers.map(esc).join(','),...rows.map((row)=>[row.reference,row.itemGroup,row.item,row.user,row.department,row.location,row.date,row.status,row.detail,row.value].map(esc).join(','))].join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download=`ITMS-${report.replaceAll(' ','-')}-${today()}.csv`;link.click();URL.revokeObjectURL(url)}
-  const totalValue=assets.reduce((sum,item)=>sum+item.cost,0); const repairSpend=maintenance.filter((item)=>item.kind==='Repair'||item.outcome==='Repair completed').reduce((sum,item)=>sum+item.cost,0); const overdue=maintenance.filter((item)=>item.state==='Scheduled'&&item.dueDate<today()).length; const exceptions=verifications.filter((item)=>item.result!=='Verified').length; const userValues=users.map((user)=>({user,value:[...custody.entries()].filter(([,entry])=>entry.userId===user.id).reduce((sum,[assetId])=>sum+(assets.find((asset)=>asset.id===assetId)?.cost??0),0)})).sort((a,b)=>b.value-a.value); const highAssets=[...assets].sort((a,b)=>b.cost-a.cost).slice(0,5)
-  const groupMix:ChartPoint[]=types.map((type)=>({label:type.name,value:assets.filter((asset)=>asset.typeId===type.id).length})).filter((item)=>item.value).sort((a,b)=>b.value-a.value); const statusMix:ChartPoint[]=[...new Set(assets.map((asset)=>asset.stockStatus))].map((state)=>({label:state,value:assets.filter((asset)=>asset.stockStatus===state).length})).sort((a,b)=>b.value-a.value); const topUsers:ChartPoint[]=userValues.filter((item)=>item.value).slice(0,6).map((item)=>({label:`${item.user.employeeCode} · ${item.user.name}`,value:item.value,note:'Asset value'})); const repairAssets:ChartPoint[]=assets.map((asset)=>{const incidentCount=incidents.filter((item)=>item.assetId===asset.id&&['Repair','Damaged','Breakage'].includes(item.type)).length;const work=maintenance.filter((item)=>item.assetId===asset.id&&(item.kind==='Repair'||item.outcome==='Repair completed'));return{label:assetLabel(asset.id),value:incidentCount+work.length,note:`₹${work.reduce((sum,item)=>sum+item.cost,0).toLocaleString('en-IN')} repair cost`}}).filter((item)=>item.value).sort((a,b)=>b.value-a.value).slice(0,6); const departmentSpend:ChartPoint[]=departments.map((department)=>{const memberIds=new Set(users.filter((user)=>user.departmentId===department.id).map((user)=>user.id));return{label:department.name,value:[...custody.entries()].filter(([,entry])=>memberIds.has(entry.userId)).reduce((sum,[assetId])=>sum+(assets.find((asset)=>asset.id===assetId)?.cost??0),0),note:'Current asset value'}}).filter((item)=>item.value).sort((a,b)=>b.value-a.value); const monthMap=new Map<string,number>();assets.forEach((asset)=>{const month=asset.purchaseDate?.slice(0,7)||'Unknown';monthMap.set(month,(monthMap.get(month)||0)+asset.cost)});const monthlySpend:ChartPoint[]=[...monthMap].map(([label,value])=>({label,value,note:'Purchase expenditure'})).sort((a,b)=>b.value-a.value).slice(0,8)
-  return <><section className="page-heading"><div><span className="eyebrow">GCCP-ITMS-BUILD-14</span><h1>Reports &amp; Analytics</h1><p>Management intelligence and downloadable lifecycle records from the controlled source.</p></div><span className="phase">LIVE LOCAL DATA</span></section><nav className="workspace-tabs">{(['Management dashboard','Report builder'] as const).map((item)=><button type="button" className={view===item?'selected':''} onClick={()=>setView(item)} key={item}>{item}</button>)}</nav>
-  {view==='Management dashboard'&&<VisualDashboard groupMix={groupMix} statusMix={statusMix} topUsers={topUsers} repairAssets={repairAssets} departmentSpend={departmentSpend} monthlySpend={monthlySpend} totalValue={totalValue} repairSpend={repairSpend} overdue={overdue} exceptions={exceptions}/>}
-  {view==='Management dashboard'?<><section className="report-kpis"><article><span>Registered assets</span><strong>{assets.length}</strong><small>₹{totalValue.toLocaleString('en-IN')} acquisition value</small></article><article><span>Active custody</span><strong>{custody.size}</strong><small>{assets.filter((item)=>item.stockStatus==='In stock').length} currently in stock</small></article><article><span>Repair expenditure</span><strong>₹{repairSpend.toLocaleString('en-IN')}</strong><small>{incidents.filter((item)=>['Repair','Damaged','Breakage'].includes(item.type)).length} repair/damage events</small></article><article><span>Maintenance overdue</span><strong>{overdue}</strong><small>{exceptions} verification exceptions</small></article></section><section className="analytics-grid"><section className="master-panel"><div className="operation-heading"><div><span className="eyebrow">INVENTORY BY ITEM GROUP</span><h2>Asset portfolio composition</h2></div></div><div className="report-bars">{types.map((type)=>{const items=assets.filter((asset)=>asset.typeId===type.id);const value=items.reduce((sum,item)=>sum+item.cost,0);return items.length?<article key={type.id}><header><strong>{type.name}</strong><span>{items.length} · ₹{value.toLocaleString('en-IN')}</span></header><i><b style={{width:`${Math.max(4,(items.length/Math.max(assets.length,1))*100)}%`}}></b></i></article>:null})}</div></section><section className="master-panel ranking"><h2>Highest-value users</h2>{userValues.slice(0,5).map((item,index)=><article key={item.user.id}><b>{index+1}</b><span>{item.user.employeeCode} · {item.user.name}</span><strong>₹{item.value.toLocaleString('en-IN')}</strong></article>)}</section><section className="master-panel ranking"><h2>Highest-value assets</h2>{highAssets.map((asset,index)=><article key={asset.id}><b>{index+1}</b><span>{assetLabel(asset.id)}</span><strong>₹{asset.cost.toLocaleString('en-IN')}</strong></article>)}</section></section></>:<section className="master-panel report-builder"><div className="operation-heading"><div><span className="eyebrow">PARAMETERISED REPORTING</span><h2>{report}</h2><p>Filter live records, review on screen, then download or print.</p></div><div className="report-actions"><button type="button" onClick={downloadCsv}>Download CSV</button><button className="primary-action" type="button" onClick={()=>window.print()}>Print / PDF</button></div></div><div className="report-filters"><label>Report<select value={report} onChange={(e)=>{setReport(e.target.value as ReportKind);setStatus('all');setGroupId('all');setLocationId('all');setDepartmentId('all')}}>{(['Asset register','Current custody','Repair history','Maintenance','User asset & expenditure summary','Department asset & expenditure summary','Item group value summary','Highest-value assets','Verification & exceptions','Disposal & write-off','Retirement & circularity'] as const).map((item)=><option key={item}>{item}</option>)}</select></label><label>Item group / category<select value={groupId} onChange={(e)=>setGroupId(e.target.value)}><option value="all">All item groups</option>{types.map((item)=><option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label><label>Location<select value={locationId} onChange={(e)=>setLocationId(e.target.value)}><option value="all">All locations</option>{locations.map((item)=><option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Department<select value={departmentId} onChange={(e)=>setDepartmentId(e.target.value)}><option value="all">All departments</option>{departments.map((item)=><option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Status / result<select value={status} onChange={(e)=>setStatus(e.target.value)}><option value="all">All statuses</option>{statuses.map((item)=><option key={item}>{item}</option>)}</select></label><label>From<input type="date" value={fromDate} onChange={(e)=>setFromDate(e.target.value)}/></label><label>To<input type="date" value={toDate} onChange={(e)=>setToDate(e.target.value)}/></label></div><div className="filter-result">Showing <strong>{rows.length}</strong> records · Total value / expenditure <strong>₹{rows.reduce((sum,item)=>sum+item.value,0).toLocaleString('en-IN')}</strong></div><DataTable rows={rows} rowKey={(item)=>item.id} columns={[{key:'reference',label:'Reference',sticky:true,width:'170px',render:(item)=><strong>{item.reference}</strong>},{key:'group',label:'Item group',width:'190px',render:(item)=>item.itemGroup},{key:'item',label:'Item / quantity',width:'280px',render:(item)=>item.item},{key:'user',label:'User / custodian',width:'230px',render:(item)=>item.user},{key:'department',label:'Department',width:'190px',render:(item)=>item.department},{key:'location',label:'Location',width:'190px',render:(item)=>item.location},{key:'date',label:'Date',width:'130px',render:(item)=>item.date},{key:'status',label:'Status',width:'190px',render:(item)=>item.status},{key:'detail',label:'Detail',width:'420px',render:(item)=>item.detail},{key:'value',label:'Value / expenditure',width:'160px',render:(item)=>`₹${item.value.toLocaleString('en-IN')}`}]} empty={<div className="empty-state"><span><Icon name="reports" size={32}/></span><strong>No matching report records</strong><p>Adjust the filters or create operational records first.</p></div>}/></section>}</>
+    if (report === "GRN receipt register")
+      return receipts.map((receipt) => {
+        const lines = receipt.lines?.length
+          ? receipt.lines
+          : [
+              {
+                id: "legacy",
+                typeId: receipt.typeId,
+                modelId: receipt.modelId,
+                quantity: receipt.quantity,
+              },
+            ];
+        const groupId =
+          receipt.groupId ??
+          types.find((type) => type.id === receipt.typeId)?.id ??
+          "";
+        const items = lines
+          .map((line) => {
+            const model = models.find((item) => item.id === line.modelId);
+            const type = types.find((item) => item.id === line.typeId);
+            return `${type?.name ?? "Item"} · ${model ? `${model.brand} ${model.name}` : "Model unavailable"} × ${line.quantity}`;
+          })
+          .join(" | ");
+        return {
+          id: receipt.id,
+          reference: receipt.grn,
+          itemGroup: typeName(groupId),
+          item: items,
+          user: receipt.receivedBy,
+          department: "Not applicable",
+          location: "Receiving store",
+          date: receipt.receivedDate,
+          status: receipt.outcome,
+          detail: `Invoice ${receipt.invoiceNumber || "Not recorded"} · PO ${receipt.purchaseOrder || "Not recorded"} · ${receipt.voidReason ? `Void reason: ${receipt.voidReason}` : receipt.inspectionNote || "No inspection remarks"}`,
+          value: 0,
+        };
+      });
+    if (report === "Asset register")
+      return assets.map((asset) => ({
+        id: asset.id,
+        reference: asset.assetId,
+        itemGroup: typeName(asset.typeId),
+        item: assetLabel(asset.id),
+        user: userName(custody.get(asset.id)?.userId ?? ""),
+        department: departmentName(
+          users.find((item) => item.id === custody.get(asset.id)?.userId)
+            ?.departmentId ?? "",
+        ),
+        location: locationName(asset.locationId),
+        date: asset.purchaseDate,
+        status: asset.stockStatus,
+        detail: `${asset.condition} · S/N ${asset.serialNumber || "N/A"}${
+          Object.keys(asset.specifications ?? {}).length
+            ? ` · ${Object.entries(asset.specifications ?? {})
+                .filter(([, value]) => value)
+                .map(([key, value]) => `${key}: ${value}`)
+                .join(" · ")}`
+            : ""
+        }`,
+        value: asset.cost,
+      }));
+    if (report === "Current custody")
+      return [...custody.entries()].map(([assetId, held]) => {
+        const asset = assets.find((item) => item.id === assetId)!;
+        const user = users.find((item) => item.id === held.userId);
+        return {
+          id: assetId,
+          reference: held.source,
+          itemGroup: typeName(asset?.typeId),
+          item: assetLabel(assetId),
+          user: userName(held.userId),
+          department: departmentName(user?.departmentId ?? ""),
+          location: locationName(asset?.locationId),
+          date: held.since,
+          status: "Active custody",
+          detail: "Accountable employee custody",
+          value: asset?.cost ?? 0,
+        };
+      });
+    if (report === "Repair history")
+      return [
+        ...incidents
+          .filter((item) =>
+            ["Repair", "Damaged", "Breakage"].includes(item.type),
+          )
+          .map((item) => {
+            const asset = assets.find((entry) => entry.id === item.assetId);
+            const user = users.find((entry) => entry.id === item.userId);
+            return {
+              id: `incident-${item.id}`,
+              reference: item.code,
+              itemGroup: typeName(asset?.typeId ?? ""),
+              item: assetLabel(item.assetId),
+              user: userName(item.userId),
+              department: departmentName(user?.departmentId ?? ""),
+              location: locationName(asset?.locationId ?? ""),
+              date: item.eventDate,
+              status: item.status,
+              detail: `${item.type} · ${item.severity} · ${item.notes}`,
+              value: 0,
+            };
+          }),
+        ...maintenance
+          .filter(
+            (item) =>
+              item.kind === "Repair" || item.outcome === "Repair completed",
+          )
+          .map((item) => {
+            const asset = assets.find((entry) => entry.id === item.assetId);
+            const held = custody.get(item.assetId);
+            const user = users.find((entry) => entry.id === held?.userId);
+            return {
+              id: `maintenance-${item.id}`,
+              reference: item.code,
+              itemGroup: typeName(asset?.typeId ?? ""),
+              item: assetLabel(item.assetId),
+              user: userName(held?.userId ?? ""),
+              department: departmentName(user?.departmentId ?? ""),
+              location: locationName(asset?.locationId ?? ""),
+              date: item.performedDate || item.dueDate,
+              status: item.state,
+              detail: `${item.activity} · ${item.findings || item.outcome}`,
+              value: item.cost,
+            };
+          }),
+      ];
+    if (report === "Maintenance")
+      return maintenance.map((item) => {
+        const asset = assets.find((entry) => entry.id === item.assetId);
+        return {
+          id: item.id,
+          reference: item.code,
+          itemGroup: typeName(asset?.typeId ?? ""),
+          item: assetLabel(item.assetId),
+          user: userName(custody.get(item.assetId)?.userId ?? ""),
+          department: "",
+          location: locationName(asset?.locationId ?? ""),
+          date: item.performedDate || item.dueDate,
+          status: item.state,
+          detail: `${item.activity} · ${item.outcome || item.kind}`,
+          value: item.cost,
+        };
+      });
+    if (report === "User asset & expenditure summary")
+      return users
+        .map((user) => {
+          const held = [...custody.entries()]
+            .filter(([, entry]) => entry.userId === user.id)
+            .map(([id]) => assets.find((asset) => asset.id === id))
+            .filter((asset): asset is Asset => Boolean(asset));
+          return {
+            id: user.id,
+            reference: user.employeeCode,
+            itemGroup: "All assigned groups",
+            item: `${held.length} currently allocated asset(s)`,
+            user: user.name,
+            department: departmentName(user.departmentId),
+            location: "Multiple / current asset locations",
+            date: today(),
+            status: held.length ? "Asset holder" : "No current assets",
+            detail:
+              held.map((asset) => asset.assetId).join(" | ") ||
+              "No assets allocated",
+            value: held.reduce((sum, asset) => sum + asset.cost, 0),
+          };
+        })
+        .sort((a, b) => b.value - a.value);
+    if (report === "Department asset & expenditure summary")
+      return departments
+        .map((department) => {
+          const memberIds = new Set(
+            users
+              .filter((user) => user.departmentId === department.id)
+              .map((user) => user.id),
+          );
+          const held = [...custody.entries()]
+            .filter(([, entry]) => memberIds.has(entry.userId))
+            .map(([id]) => assets.find((asset) => asset.id === id))
+            .filter((asset): asset is Asset => Boolean(asset));
+          return {
+            id: department.id,
+            reference: department.code,
+            itemGroup: "All assigned groups",
+            item: `${held.length} assets across ${memberIds.size} users`,
+            user: "Department aggregate",
+            department: department.name,
+            location: "Multiple locations",
+            date: today(),
+            status: held.length ? "Assets assigned" : "No current assets",
+            detail:
+              held.map((asset) => asset.assetId).join(" | ") ||
+              "No assets allocated",
+            value: held.reduce((sum, asset) => sum + asset.cost, 0),
+          };
+        })
+        .sort((a, b) => b.value - a.value);
+    if (report === "Item group value summary")
+      return types
+        .map((type) => {
+          const grouped = assets.filter((asset) => asset.typeId === type.id);
+          return {
+            id: type.id,
+            reference: type.code,
+            itemGroup: type.name,
+            item: `${grouped.length} registered asset(s)`,
+            user: "All custodians",
+            department: "All departments",
+            location: "All locations",
+            date: today(),
+            status: "Portfolio summary",
+            detail: `${grouped.filter((item) => item.stockStatus === "In stock").length} in stock · ${grouped.filter((item) => item.stockStatus === "Allocated").length} allocated`,
+            value: grouped.reduce((sum, item) => sum + item.cost, 0),
+          };
+        })
+        .filter((item) => item.value || item.detail.startsWith("0") === false)
+        .sort((a, b) => b.value - a.value);
+    if (report === "Highest-value assets")
+      return assets
+        .map((asset) => ({
+          id: asset.id,
+          reference: asset.assetId,
+          itemGroup: typeName(asset.typeId),
+          item: assetLabel(asset.id),
+          user: userName(custody.get(asset.id)?.userId ?? ""),
+          department: departmentName(
+            users.find((item) => item.id === custody.get(asset.id)?.userId)
+              ?.departmentId ?? "",
+          ),
+          location: locationName(asset.locationId),
+          date: asset.purchaseDate,
+          status: asset.stockStatus,
+          detail: `${asset.condition} · ranked by acquisition value`,
+          value: asset.cost,
+        }))
+        .sort((a, b) => b.value - a.value);
+    if (report === "Retirement & circularity")
+      return retirements.flatMap((item) =>
+        (item.assetIds?.length
+          ? item.assetIds
+          : item.assetId
+            ? [item.assetId]
+            : []
+        ).map((assetId, index) => {
+          const asset = assets.find((entry) => entry.id === assetId);
+          return {
+            id: `${item.id}-${assetId}`,
+            reference: item.code,
+            itemGroup: typeName(asset?.typeId ?? ""),
+            item: assetLabel(assetId),
+            user: item.partyName,
+            department: "",
+            location: locationName(asset?.locationId ?? ""),
+            date: (item.completedAt || item.requestedAt).slice(0, 10),
+            status: item.state,
+            detail: `${item.route} · Asset ${index + 1}/${item.assetIds?.length || 1} · ${item.reason} · ${item.reference || "No external reference"}`,
+            value: index === 0 ? item.estimatedValue : 0,
+          };
+        }),
+      );
+    if (report === "Verification & exceptions")
+      return verifications.map((item) => {
+        const asset = assets.find((entry) => entry.id === item.assetId);
+        return {
+          id: item.id,
+          reference: item.code,
+          itemGroup: typeName(item.groupId),
+          item: assetLabel(item.assetId),
+          user: item.observedCustodian,
+          department: "",
+          location:
+            item.observedLocation || locationName(asset?.locationId ?? ""),
+          date: item.verifiedDate,
+          status: item.result,
+          detail: item.notes,
+          value: 0,
+        };
+      });
+    return disposals.map((item) => {
+      const asset = assets.find((entry) => entry.id === item.assetId);
+      return {
+        id: item.id,
+        reference: item.code,
+        itemGroup: typeName(item.groupId),
+        item: assetLabel(item.assetId),
+        user: item.requestedBy,
+        department: "",
+        location: locationName(asset?.locationId ?? ""),
+        date: item.requestedAt.slice(0, 10),
+        status: item.state,
+        detail: `${item.method} · ${item.reason}`,
+        value: item.estimatedValue,
+      };
+    });
+  })();
+  const rows = allRows.filter((row) => {
+    const group = groupId === "all" || row.itemGroup === typeName(groupId);
+    const location =
+      locationId === "all" || row.location === locationName(locationId);
+    const department =
+      departmentId === "all" || row.department === departmentName(departmentId);
+    const state = status === "all" || row.status === status;
+    const dates =
+      (!fromDate || row.date >= fromDate) && (!toDate || row.date <= toDate);
+    return group && location && department && state && dates;
+  });
+  const statuses = [...new Set(allRows.map((item) => item.status))].sort();
+  function downloadCsv() {
+    const headers = [
+      "Reference",
+      "Item group",
+      "Item",
+      "User / custodian",
+      "Department",
+      "Location",
+      "Date",
+      "Status",
+      "Detail",
+      "Value",
+    ];
+    const csv = [
+      headers.map(esc).join(","),
+      ...rows.map((row) =>
+        [
+          row.reference,
+          row.itemGroup,
+          row.item,
+          row.user,
+          row.department,
+          row.location,
+          row.date,
+          row.status,
+          row.detail,
+          row.value,
+        ]
+          .map(esc)
+          .join(","),
+      ),
+    ].join("\r\n");
+    const url = URL.createObjectURL(
+      new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ITMS-${report.replaceAll(" ", "-")}-${today()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+  const totalValue = assets.reduce((sum, item) => sum + item.cost, 0);
+  const repairSpend = maintenance
+    .filter(
+      (item) => item.kind === "Repair" || item.outcome === "Repair completed",
+    )
+    .reduce((sum, item) => sum + item.cost, 0);
+  const overdue = maintenance.filter(
+    (item) => item.state === "Scheduled" && item.dueDate < today(),
+  ).length;
+  const exceptions = verifications.filter(
+    (item) => item.result !== "Verified",
+  ).length;
+  const userValues = users
+    .map((user) => ({
+      user,
+      value: [...custody.entries()]
+        .filter(([, entry]) => entry.userId === user.id)
+        .reduce(
+          (sum, [assetId]) =>
+            sum + (assets.find((asset) => asset.id === assetId)?.cost ?? 0),
+          0,
+        ),
+    }))
+    .sort((a, b) => b.value - a.value);
+  const highAssets = [...assets].sort((a, b) => b.cost - a.cost).slice(0, 5);
+  const groupMix: ChartPoint[] = types
+    .map((type) => ({
+      label: type.name,
+      value: assets.filter((asset) => asset.typeId === type.id).length,
+    }))
+    .filter((item) => item.value)
+    .sort((a, b) => b.value - a.value);
+  const statusMix: ChartPoint[] = [
+    ...new Set(assets.map((asset) => asset.stockStatus)),
+  ]
+    .map((state) => ({
+      label: state,
+      value: assets.filter((asset) => asset.stockStatus === state).length,
+    }))
+    .sort((a, b) => b.value - a.value);
+  const topUsers: ChartPoint[] = userValues
+    .filter((item) => item.value)
+    .slice(0, 6)
+    .map((item) => ({
+      label: `${item.user.employeeCode} · ${item.user.name}`,
+      value: item.value,
+      note: "Asset value",
+    }));
+  const repairAssets: ChartPoint[] = assets
+    .map((asset) => {
+      const incidentCount = incidents.filter(
+        (item) =>
+          item.assetId === asset.id &&
+          ["Repair", "Damaged", "Breakage"].includes(item.type),
+      ).length;
+      const work = maintenance.filter(
+        (item) =>
+          item.assetId === asset.id &&
+          (item.kind === "Repair" || item.outcome === "Repair completed"),
+      );
+      return {
+        label: assetLabel(asset.id),
+        value: incidentCount + work.length,
+        note: `₹${work.reduce((sum, item) => sum + item.cost, 0).toLocaleString("en-IN")} repair cost`,
+      };
+    })
+    .filter((item) => item.value)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
+  const departmentSpend: ChartPoint[] = departments
+    .map((department) => {
+      const memberIds = new Set(
+        users
+          .filter((user) => user.departmentId === department.id)
+          .map((user) => user.id),
+      );
+      return {
+        label: department.name,
+        value: [...custody.entries()]
+          .filter(([, entry]) => memberIds.has(entry.userId))
+          .reduce(
+            (sum, [assetId]) =>
+              sum + (assets.find((asset) => asset.id === assetId)?.cost ?? 0),
+            0,
+          ),
+        note: "Current asset value",
+      };
+    })
+    .filter((item) => item.value)
+    .sort((a, b) => b.value - a.value);
+  const monthMap = new Map<string, number>();
+  assets.forEach((asset) => {
+    const month = asset.purchaseDate?.slice(0, 7) || "Unknown";
+    monthMap.set(month, (monthMap.get(month) || 0) + asset.cost);
+  });
+  const monthlySpend: ChartPoint[] = [...monthMap]
+    .map(([label, value]) => ({ label, value, note: "Purchase expenditure" }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8);
+  return (
+    <>
+      <section className="page-heading">
+        <div>
+          <span className="eyebrow">GCCP-ITMS-BUILD-14</span>
+          <h1>Reports &amp; Analytics</h1>
+          <p>
+            Management intelligence and downloadable lifecycle records from the
+            controlled source.
+          </p>
+        </div>
+        <span className="phase">LIVE LOCAL DATA</span>
+      </section>
+      <nav className="workspace-tabs">
+        {(["Management dashboard", "Report builder"] as const).map((item) => (
+          <button
+            type="button"
+            className={view === item ? "selected" : ""}
+            aria-current={view === item ? "page" : undefined}
+            onClick={() => setView(item)}
+            key={item}
+          >
+            {item}
+          </button>
+        ))}
+      </nav>
+      {view === "Management dashboard" && (
+        <VisualDashboard
+          groupMix={groupMix}
+          statusMix={statusMix}
+          topUsers={topUsers}
+          repairAssets={repairAssets}
+          departmentSpend={departmentSpend}
+          monthlySpend={monthlySpend}
+          totalValue={totalValue}
+          repairSpend={repairSpend}
+          overdue={overdue}
+          exceptions={exceptions}
+        />
+      )}
+      {view === "Management dashboard" ? (
+        <>
+          <section className="report-kpis">
+            <article>
+              <span>Registered assets</span>
+              <strong>{assets.length}</strong>
+              <small>
+                ₹{totalValue.toLocaleString("en-IN")} acquisition value
+              </small>
+            </article>
+            <article>
+              <span>Active custody</span>
+              <strong>{custody.size}</strong>
+              <small>
+                {
+                  assets.filter((item) => item.stockStatus === "In stock")
+                    .length
+                }{" "}
+                currently in stock
+              </small>
+            </article>
+            <article>
+              <span>Repair expenditure</span>
+              <strong>₹{repairSpend.toLocaleString("en-IN")}</strong>
+              <small>
+                {
+                  incidents.filter((item) =>
+                    ["Repair", "Damaged", "Breakage"].includes(item.type),
+                  ).length
+                }{" "}
+                repair/damage events
+              </small>
+            </article>
+            <article>
+              <span>Maintenance overdue</span>
+              <strong>{overdue}</strong>
+              <small>{exceptions} verification exceptions</small>
+            </article>
+          </section>
+          <section className="analytics-grid">
+            <section className="master-panel">
+              <div className="operation-heading">
+                <div>
+                  <span className="eyebrow">INVENTORY BY ITEM GROUP</span>
+                  <h2>Asset portfolio composition</h2>
+                </div>
+              </div>
+              <div className="report-bars">
+                {types.map((type) => {
+                  const items = assets.filter(
+                    (asset) => asset.typeId === type.id,
+                  );
+                  const value = items.reduce((sum, item) => sum + item.cost, 0);
+                  return items.length ? (
+                    <article key={type.id}>
+                      <header>
+                        <strong>{type.name}</strong>
+                        <span>
+                          {items.length} · ₹{value.toLocaleString("en-IN")}
+                        </span>
+                      </header>
+                      <i>
+                        <b
+                          style={{
+                            width: `${Math.max(4, (items.length / Math.max(assets.length, 1)) * 100)}%`,
+                          }}
+                        ></b>
+                      </i>
+                    </article>
+                  ) : null;
+                })}
+              </div>
+            </section>
+            <section className="master-panel ranking">
+              <h2>Highest-value users</h2>
+              {userValues.slice(0, 5).map((item, index) => (
+                <article key={item.user.id}>
+                  <b>{index + 1}</b>
+                  <span>
+                    {item.user.employeeCode} · {item.user.name}
+                  </span>
+                  <strong>₹{item.value.toLocaleString("en-IN")}</strong>
+                </article>
+              ))}
+            </section>
+            <section className="master-panel ranking">
+              <h2>Highest-value assets</h2>
+              {highAssets.map((asset, index) => (
+                <article key={asset.id}>
+                  <b>{index + 1}</b>
+                  <span>{assetLabel(asset.id)}</span>
+                  <strong>₹{asset.cost.toLocaleString("en-IN")}</strong>
+                </article>
+              ))}
+            </section>
+          </section>
+        </>
+      ) : (
+        <section className="master-panel report-builder">
+          <div className="operation-heading">
+            <div>
+              <span className="eyebrow">PARAMETERISED REPORTING</span>
+              <h2>{report}</h2>
+              <p>
+                Filter live records, review on screen, then download or print.
+              </p>
+            </div>
+            <div className="report-actions">
+              <button type="button" onClick={downloadCsv}>
+                Download CSV
+              </button>
+              <button
+                className="primary-action"
+                type="button"
+                onClick={() => window.print()}
+              >
+                Print / PDF
+              </button>
+            </div>
+          </div>
+          <div className="report-filters">
+            <label>
+              Report
+              <select
+                value={report}
+                onChange={(e) => {
+                  setReport(e.target.value as ReportKind);
+                  setStatus("all");
+                  setGroupId("all");
+                  setLocationId("all");
+                  setDepartmentId("all");
+                }}
+              >
+                {(
+                  [
+                    "GRN receipt register",
+                    "Asset register",
+                    "Current custody",
+                    "Repair history",
+                    "Maintenance",
+                    "User asset & expenditure summary",
+                    "Department asset & expenditure summary",
+                    "Item group value summary",
+                    "Highest-value assets",
+                    "Verification & exceptions",
+                    "Disposal & write-off",
+                    "Retirement & circularity",
+                  ] as const
+                ).map((item) => (
+                  <option key={item}>{item}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Item group / category
+              <select
+                value={groupId}
+                onChange={(e) => setGroupId(e.target.value)}
+              >
+                <option value="all">All item groups</option>
+                {types.map((item) => (
+                  <option value={item.id} key={item.id}>
+                    {item.code} · {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Location
+              <select
+                value={locationId}
+                onChange={(e) => setLocationId(e.target.value)}
+              >
+                <option value="all">All locations</option>
+                {locations.map((item) => (
+                  <option value={item.id} key={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Department
+              <select
+                value={departmentId}
+                onChange={(e) => setDepartmentId(e.target.value)}
+              >
+                <option value="all">All departments</option>
+                {departments.map((item) => (
+                  <option value={item.id} key={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Status / result
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                <option value="all">All statuses</option>
+                {statuses.map((item) => (
+                  <option key={item}>{item}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              From
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+              />
+            </label>
+            <label>
+              To
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="filter-result">
+            Showing <strong>{rows.length}</strong> records · Total value /
+            expenditure{" "}
+            <strong>
+              ₹
+              {rows
+                .reduce((sum, item) => sum + item.value, 0)
+                .toLocaleString("en-IN")}
+            </strong>
+          </div>
+          <section className="report-preview-launcher">
+            <div><span className="eyebrow">ON-DEMAND DETAIL</span><h3>Keep the report workspace clear</h3><p>Open the matching records only when review is required.</p></div>
+            <div><button type="button" className="secondary-action" onClick={()=>setReportPreviewOpen(true)}>View {rows.length} records</button><button type="button" className="primary-action" onClick={()=>{setReportPreviewOpen(true);setTimeout(()=>window.print(),120)}}>Open print / PDF</button></div>
+          </section>
+          {reportPreviewOpen&&<ReportPreviewModal report={report} rows={rows} onClose={()=>setReportPreviewOpen(false)} onDownload={downloadCsv}/>}
+        </section>
+      )}
+    </>
+  );
 }
 
-const palette=['#1769e0','#00a878','#f5a623','#e24a4a','#7b61d1','#20a4b8','#ef6c35','#667085']
-function VisualDashboard({groupMix,statusMix,topUsers,repairAssets,departmentSpend,monthlySpend,totalValue,repairSpend,overdue,exceptions}:{groupMix:ChartPoint[];statusMix:ChartPoint[];topUsers:ChartPoint[];repairAssets:ChartPoint[];departmentSpend:ChartPoint[];monthlySpend:ChartPoint[];totalValue:number;repairSpend:number;overdue:number;exceptions:number}) { return <section className="visual-dashboard"><div className="visual-summary"><span>Portfolio value <b>₹{totalValue.toLocaleString('en-IN')}</b></span><span>Repair spend <b>₹{repairSpend.toLocaleString('en-IN')}</b></span><span>Overdue maintenance <b>{overdue}</b></span><span>Verification exceptions <b>{exceptions}</b></span></div><div className="chart-grid"><DonutChart title="Assets by item group" data={groupMix}/><DonutChart title="Assets by lifecycle status" data={statusMix}/><BarChart title="Top users by asset value" data={topUsers} money/><BarChart title="Most repaired assets" data={repairAssets}/><BarChart title="Department asset expenditure" data={departmentSpend} money/><BarChart title="Highest-expenditure purchase months" data={monthlySpend} money/></div></section> }
-function polar(cx:number,cy:number,r:number,angle:number){const radians=(angle-90)*Math.PI/180;return{x:cx+r*Math.cos(radians),y:cy+r*Math.sin(radians)}}
-function arcPath(start:number,end:number){const a=polar(100,100,72,end);const b=polar(100,100,72,start);return`M ${a.x} ${a.y} A 72 72 0 ${end-start<=180?0:1} 0 ${b.x} ${b.y} L 100 100 Z`}
-function buildDonutSegments(data:ChartPoint[],total:number){return data.reduce<{item:ChartPoint;index:number;start:number;end:number;middle:number}[]>((segments,item,index)=>{const start=segments.at(-1)?.end??0;const end=start+(total?item.value/total*359.8:0);return[...segments,{item,index,start,end,middle:(start+end)/2}]},[])}
-function DonutChart({title,data}:{title:string;data:ChartPoint[]}) { const total=data.reduce((sum,item)=>sum+item.value,0);const segments=buildDonutSegments(data,total);return <article className="chart-card"><header><span>COMPOSITION</span><h2>{title}</h2></header>{data.length?<div className="donut-layout"><div className="donut"><svg viewBox="0 0 200 200" role="img" aria-label={title}>{segments.map(({item,index,start,end,middle})=><g className="donut-segment" style={{'--shift-x':`${Math.cos((middle-90)*Math.PI/180)*7}px`,'--shift-y':`${Math.sin((middle-90)*Math.PI/180)*7}px`} as React.CSSProperties} key={item.label}><path d={arcPath(start,end)} fill={palette[index%palette.length]} stroke="#fff" strokeWidth="2"><title>{item.label}: {item.value} ({Math.round(item.value/total*100)}%)</title></path><g className="segment-info"><circle cx="100" cy="100" r="43"/><text x="100" y="91">{item.label.length>18?`${item.label.slice(0,17)}…`:item.label}</text><text className="segment-value" x="100" y="113">{item.value} · {Math.round(item.value/total*100)}%</text></g></g>)}<g className="donut-default"><circle cx="100" cy="100" r="43"/><text x="100" y="95">{total}</text><text x="100" y="114">Total</text></g></svg></div><div className="chart-legend">{data.slice(0,8).map((item,index)=><p key={item.label} title={`${item.label}: ${item.value} (${Math.round(item.value/total*100)}%)`}><i style={{background:palette[index%palette.length]}}></i><span>{item.label}</span><b>{item.value}</b></p>)}</div></div>:<EmptyChart/>}</article> }
-function BarChart({title,data,money=false}:{title:string;data:ChartPoint[];money?:boolean}) { const max=Math.max(...data.map((item)=>item.value),1);return <article className="chart-card"><header><span>RANKING</span><h2>{title}</h2></header>{data.length?<div className="bar-chart">{data.map((item,index)=><div className="bar-row" key={item.label}><label><span>{index+1}. {item.label}</span><b>{money?'₹':''}{item.value.toLocaleString('en-IN')}</b></label><i><b style={{width:`${Math.max(3,item.value/max*100)}%`,background:palette[index%palette.length]}}></b></i>{item.note&&<small>{item.note}</small>}<span className="bar-tooltip"><b>{item.label}</b><em>{money?'₹':''}{item.value.toLocaleString('en-IN')}</em>{item.note&&<small>{item.note}</small>}</span></div>)}</div>:<EmptyChart/>}</article> }
-function EmptyChart(){return <div className="chart-empty">No data available yet</div>}
+function ReportPreviewModal({report,rows,onClose,onDownload}:{report:ReportKind;rows:ReportRow[];onClose:()=>void;onDownload:()=>void}){
+  return <div className="report-overlay" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget)onClose()}}><section className="report-detail-window" role="dialog" aria-modal="true" aria-label={`${report} details`}>
+    <header><div><span className="eyebrow">REPORT DETAIL</span><h2>{report}</h2><p>{rows.length} matching controlled records</p></div><div className="report-actions"><button type="button" onClick={onDownload}>Download CSV</button><button type="button" className="primary-action" onClick={()=>window.print()}>Print / PDF</button><button type="button" className="secondary-action" onClick={onClose}>Close</button></div></header>
+    <DataTable rows={rows} rowKey={(item)=>item.id} columns={[
+      {key:'reference',label:'Reference',sticky:true,width:'170px',render:(item)=><strong>{item.reference}</strong>},
+      {key:'group',label:'Item group',width:'190px',render:(item)=>item.itemGroup},
+      {key:'item',label:'Item / quantity',width:'280px',render:(item)=>item.item},
+      {key:'user',label:'User / custodian',width:'230px',render:(item)=>item.user},
+      {key:'department',label:'Department',width:'190px',render:(item)=>item.department},
+      {key:'location',label:'Location',width:'190px',render:(item)=>item.location},
+      {key:'date',label:'Date',width:'130px',render:(item)=>item.date},
+      {key:'status',label:'Status',width:'190px',render:(item)=>item.status},
+      {key:'detail',label:'Detail',width:'420px',render:(item)=>item.detail},
+      {key:'value',label:'Value / expenditure',width:'160px',render:(item)=>`₹${item.value.toLocaleString('en-IN')}`},
+    ]} empty={<div className="empty-state"><span><Icon name="reports" size={32}/></span><strong>No matching report records</strong><p>Adjust the filters or create operational records first.</p></div>}/>
+  </section></div>
+}
+
+const palette = [
+  "#1769e0",
+  "#00a878",
+  "#f5a623",
+  "#e24a4a",
+  "#7b61d1",
+  "#20a4b8",
+  "#ef6c35",
+  "#667085",
+];
+function VisualDashboard({
+  groupMix,
+  statusMix,
+  topUsers,
+  repairAssets,
+  departmentSpend,
+  monthlySpend,
+  totalValue,
+  repairSpend,
+  overdue,
+  exceptions,
+}: {
+  groupMix: ChartPoint[];
+  statusMix: ChartPoint[];
+  topUsers: ChartPoint[];
+  repairAssets: ChartPoint[];
+  departmentSpend: ChartPoint[];
+  monthlySpend: ChartPoint[];
+  totalValue: number;
+  repairSpend: number;
+  overdue: number;
+  exceptions: number;
+}) {
+  return (
+    <section className="visual-dashboard">
+      <GrnReportSummary />
+      <div className="visual-summary">
+        <span>
+          Portfolio value <b>₹{totalValue.toLocaleString("en-IN")}</b>
+        </span>
+        <span>
+          Repair spend <b>₹{repairSpend.toLocaleString("en-IN")}</b>
+        </span>
+        <span>
+          Overdue maintenance <b>{overdue}</b>
+        </span>
+        <span>
+          Verification exceptions <b>{exceptions}</b>
+        </span>
+      </div>
+      <div className="chart-grid">
+        <DonutChart title="Assets by item group" data={groupMix} />
+        <DonutChart title="Assets by lifecycle status" data={statusMix} />
+        <BarChart title="Top users by asset value" data={topUsers} money />
+        <BarChart title="Most repaired assets" data={repairAssets} />
+        <BarChart
+          title="Department asset expenditure"
+          data={departmentSpend}
+          money
+        />
+        <BarChart
+          title="Highest-expenditure purchase months"
+          data={monthlySpend}
+          money
+        />
+      </div>
+    </section>
+  );
+}
+function GrnReportSummary() {
+  const [receipts] = useLocalStore<Receipt[]>("itms.receipts.v1", []);
+  const [query, setQuery] = useState("");
+  const [detailOpen, setDetailOpen] = useState(false);
+  const term = query.trim().toLowerCase();
+  const visible = receipts
+    .filter(
+      (item) =>
+        !term ||
+        `${item.grn} ${item.invoiceNumber} ${item.purchaseOrder} ${item.receivedBy} ${item.outcome} ${item.inspectionNote}`
+          .toLowerCase()
+          .includes(term),
+    )
+    .sort((a, b) => b.receivedDate.localeCompare(a.receivedDate));
+  const accepted = receipts.filter(
+    (item) => item.outcome === "Accepted",
+  ).length;
+  const exceptions = receipts.length - accepted;
+  const download = () => {
+    const csv = [
+      [
+        "GRN",
+        "Invoice",
+        "PO",
+        "Received date",
+        "Received by",
+        "Outcome",
+        "Inspection remarks",
+      ],
+      ...visible.map((item) => [
+        item.grn,
+        item.invoiceNumber,
+        item.purchaseOrder,
+        item.receivedDate,
+        item.receivedBy,
+        item.outcome,
+        item.voidReason || item.inspectionNote,
+      ]),
+    ]
+      .map((row) => row.map(esc).join(","))
+      .join("\r\n");
+    const url = URL.createObjectURL(
+      new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ITMS-GRN-receipt-register-${today()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <section className="master-panel grn-report-summary">
+      <header>
+        <div>
+          <span className="eyebrow">GRN RECEIPT REPORT</span>
+          <h2>Goods receipt register</h2>
+          <p>Search, review and export controlled GRN activity.</p>
+        </div>
+        <div className="report-actions"><button type="button" className="secondary-action" onClick={()=>setDetailOpen(true)}>View register</button><button type="button" className="primary-action" onClick={download}>Download CSV</button></div>
+      </header>
+      <div className="report-kpis">
+        <article>
+          <span>Total GRNs</span>
+          <strong>{receipts.length}</strong>
+        </article>
+        <article>
+          <span>Accepted</span>
+          <strong>{accepted}</strong>
+        </article>
+        <article>
+          <span>Exceptions / voided</span>
+          <strong>{exceptions}</strong>
+        </article>
+      </div>
+      <div className="report-summary-note"><Icon name="reports" size={19}/><span>The live register is available on demand. Use <b>View register</b> to search and inspect receipt history.</span></div>
+      {detailOpen&&<div className="report-overlay" role="presentation" onMouseDown={(event)=>{if(event.target===event.currentTarget)setDetailOpen(false)}}><section className="report-detail-window grn-detail-window" role="dialog" aria-modal="true" aria-label="Goods receipt register">
+        <header><div><span className="eyebrow">GRN RECEIPT REGISTER</span><h2>Goods receipt activity</h2><p>Search, inspect and export controlled GRNs.</p></div><div className="report-actions"><button type="button" onClick={download}>Download CSV</button><button type="button" className="secondary-action" onClick={()=>setDetailOpen(false)}>Close</button></div></header>
+        <label className="grn-report-search"><Icon name="inventory" size={17}/><input type="search" value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Search GRN, invoice, PO, receiver, outcome or inspection remarks"/></label>
+        <div className="grn-report-list"><header><span>GRN / date</span><span>Invoice / PO</span><span>Received by</span><span>Outcome</span><span>Inspection remarks</span></header>{visible.map((item)=><article key={item.id}><strong>{item.grn}<small>{item.receivedDate}</small></strong><span>{item.invoiceNumber||"—"}<small>{item.purchaseOrder||"No PO"}</small></span><span>{item.receivedBy||"—"}</span><b>{item.outcome}</b><span>{item.voidReason||item.inspectionNote||"—"}</span></article>)}{!visible.length&&<p>No GRN records match the current search.</p>}</div>
+      </section></div>}
+    </section>
+  );
+}
+function polar(cx: number, cy: number, r: number, angle: number) {
+  const radians = ((angle - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(radians), y: cy + r * Math.sin(radians) };
+}
+function arcPath(start: number, end: number) {
+  const a = polar(100, 100, 72, end);
+  const b = polar(100, 100, 72, start);
+  return `M ${a.x} ${a.y} A 72 72 0 ${end - start <= 180 ? 0 : 1} 0 ${b.x} ${b.y} L 100 100 Z`;
+}
+function buildDonutSegments(data: ChartPoint[], total: number) {
+  return data.reduce<
+    {
+      item: ChartPoint;
+      index: number;
+      start: number;
+      end: number;
+      middle: number;
+    }[]
+  >((segments, item, index) => {
+    const start = segments.at(-1)?.end ?? 0;
+    const end = start + (total ? (item.value / total) * 359.8 : 0);
+    return [
+      ...segments,
+      { item, index, start, end, middle: (start + end) / 2 },
+    ];
+  }, []);
+}
+function DonutChart({ title, data }: { title: string; data: ChartPoint[] }) {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  const segments = buildDonutSegments(data, total);
+  return (
+    <article className="chart-card">
+      <header>
+        <span>COMPOSITION</span>
+        <h2>{title}</h2>
+      </header>
+      {data.length ? (
+        <div className="donut-layout">
+          <div className="donut">
+            <svg viewBox="0 0 200 200" role="img" aria-label={title}>
+              {segments.map(({ item, index, start, end, middle }) => (
+                <g
+                  className="donut-segment"
+                  style={
+                    {
+                      "--shift-x": `${Math.cos(((middle - 90) * Math.PI) / 180) * 7}px`,
+                      "--shift-y": `${Math.sin(((middle - 90) * Math.PI) / 180) * 7}px`,
+                    } as React.CSSProperties
+                  }
+                  key={item.label}
+                >
+                  <path
+                    d={arcPath(start, end)}
+                    fill={palette[index % palette.length]}
+                    stroke="#fff"
+                    strokeWidth="2"
+                  >
+                    <title>
+                      {item.label}: {item.value} (
+                      {Math.round((item.value / total) * 100)}%)
+                    </title>
+                  </path>
+                  <g className="segment-info">
+                    <circle cx="100" cy="100" r="43" />
+                    <text x="100" y="91">
+                      {item.label.length > 18
+                        ? `${item.label.slice(0, 17)}…`
+                        : item.label}
+                    </text>
+                    <text className="segment-value" x="100" y="113">
+                      {item.value} · {Math.round((item.value / total) * 100)}%
+                    </text>
+                  </g>
+                </g>
+              ))}
+              <g className="donut-default">
+                <circle cx="100" cy="100" r="43" />
+                <text x="100" y="95">
+                  {total}
+                </text>
+                <text x="100" y="114">
+                  Total
+                </text>
+              </g>
+            </svg>
+          </div>
+          <div className="chart-legend">
+            {data.slice(0, 8).map((item, index) => (
+              <p
+                key={item.label}
+                title={`${item.label}: ${item.value} (${Math.round((item.value / total) * 100)}%)`}
+              >
+                <i style={{ background: palette[index % palette.length] }}></i>
+                <span>{item.label}</span>
+                <b>{item.value}</b>
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <EmptyChart />
+      )}
+    </article>
+  );
+}
+function BarChart({
+  title,
+  data,
+  money = false,
+}: {
+  title: string;
+  data: ChartPoint[];
+  money?: boolean;
+}) {
+  const max = Math.max(...data.map((item) => item.value), 1);
+  return (
+    <article className="chart-card">
+      <header>
+        <span>RANKING</span>
+        <h2>{title}</h2>
+      </header>
+      {data.length ? (
+        <div className="bar-chart">
+          {data.map((item, index) => (
+            <div className="bar-row" key={item.label}>
+              <label>
+                <span>
+                  {index + 1}. {item.label}
+                </span>
+                <b>
+                  {money ? "₹" : ""}
+                  {item.value.toLocaleString("en-IN")}
+                </b>
+              </label>
+              <i>
+                <b
+                  style={{
+                    width: `${Math.max(3, (item.value / max) * 100)}%`,
+                    background: palette[index % palette.length],
+                  }}
+                ></b>
+              </i>
+              {item.note && <small>{item.note}</small>}
+              <span className="bar-tooltip">
+                <b>{item.label}</b>
+                <em>
+                  {money ? "₹" : ""}
+                  {item.value.toLocaleString("en-IN")}
+                </em>
+                {item.note && <small>{item.note}</small>}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyChart />
+      )}
+    </article>
+  );
+}
+function EmptyChart() {
+  return <div className="chart-empty">No data available yet</div>;
+}

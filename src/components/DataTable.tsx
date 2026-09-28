@@ -1,13 +1,19 @@
-import type { ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import './DataTable.css'
 
-export type DataColumn<T> = { key: string; label: string; render: (row: T) => ReactNode; sticky?: boolean; width?: string }
+export type DataColumn<T> = { key: string; label: string; render: (row: T) => ReactNode; sticky?: boolean; width?: string; defaultVisible?: boolean; sortValue?: (row: T) => string | number }
+type TablePreferences = { hidden: string[]; widths: Record<string, number> }
+const preferenceKey = (tableId: string) => `glassco.table-view.${tableId}.v1`
+function loadPreferences(tableId?: string): TablePreferences { if (!tableId) return { hidden: [], widths: {} }; try { return JSON.parse(localStorage.getItem(preferenceKey(tableId)) ?? '{"hidden":[],"widths":{}}') as TablePreferences } catch { return { hidden: [], widths: {} } } }
 
-export default function DataTable<T>({ columns, rows, rowKey, empty }: { columns: DataColumn<T>[]; rows: T[]; rowKey: (row: T) => string; empty: ReactNode }) {
+export default function DataTable<T>({ columns, rows, rowKey, empty = <div className="empty-state"><strong>No records available</strong></div>, sortKey, sortDirection = 'asc', onSort, tableId, configurable = false }: { columns: DataColumn<T>[]; rows: T[]; rowKey: (row: T) => string; empty?: ReactNode; sortKey?: string; sortDirection?: 'asc' | 'desc'; onSort?: (key: string) => void; tableId?: string; configurable?: boolean }) {
+  const [preferences, setPreferences] = useState<TablePreferences>(() => loadPreferences(tableId))
+  const [viewOpen, setViewOpen] = useState(false)
+  useEffect(() => { setPreferences(loadPreferences(tableId)) }, [tableId])
+  useEffect(() => { if (tableId) localStorage.setItem(preferenceKey(tableId), JSON.stringify(preferences)) }, [preferences, tableId])
+  const visibleColumns = useMemo(() => columns.filter((column) => !preferences.hidden.includes(column.key) || column.sticky), [columns, preferences.hidden])
+  const changeVisibility = (key: string, visible: boolean) => setPreferences((current) => ({ ...current, hidden: visible ? current.hidden.filter((item) => item !== key) : [...new Set([...current.hidden, key])] }))
+  const startResize = (event: React.PointerEvent<HTMLSpanElement>, column: DataColumn<T>) => { event.preventDefault(); const startX = event.clientX; const startWidth = preferences.widths[column.key] ?? (Number.parseInt(column.width ?? '', 10) || 150); const move = (moveEvent: PointerEvent) => setPreferences((current) => ({ ...current, widths: { ...current.widths, [column.key]: Math.max(96, startWidth + moveEvent.clientX - startX) } })); const stop = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop) }; window.addEventListener('pointermove', move); window.addEventListener('pointerup', stop) }
   if (rows.length === 0) return <>{empty}</>
-  return <div className="data-table-scroll" role="region" aria-label="Master data table" tabIndex={0}>
-    <table className="data-table">
-      <thead><tr>{columns.map((column) => <th className={column.sticky ? 'sticky-column' : ''} style={{ minWidth: column.width }} scope="col" key={column.key}>{column.label}</th>)}</tr></thead>
-      <tbody>{rows.map((row) => <tr key={rowKey(row)}>{columns.map((column) => <td className={column.sticky ? 'sticky-column' : ''} key={column.key}>{column.render(row)}</td>)}</tr>)}</tbody>
-    </table>
-  </div>
+  return <>{configurable && <div className="data-table-controls"><div className="table-view-control"><button type="button" className="secondary-action" onClick={() => setViewOpen((value) => !value)}>View columns</button>{viewOpen && <div className="table-view-menu" role="menu"><strong>Show or hide columns</strong><small>Your view and column widths are saved on this device.</small>{columns.map((column) => <label key={column.key}><input type="checkbox" checked={column.sticky || !preferences.hidden.includes(column.key)} disabled={column.sticky} onChange={(event) => changeVisibility(column.key, event.target.checked)} />{column.label}</label>)}</div>}</div></div>}<div className="data-table-scroll" role="region" aria-label="Master data table" tabIndex={0}><table className="data-table"><thead><tr>{visibleColumns.map((column) => { const width = preferences.widths[column.key] ? `${preferences.widths[column.key]}px` : column.width; return <th className={column.sticky ? 'sticky-column' : ''} style={{ minWidth: width, width }} scope="col" key={column.key}>{column.sortValue && onSort ? <button type="button" className={`table-sort ${sortKey === column.key ? 'active' : ''}`} onClick={() => onSort(column.key)}>{column.label}<span aria-hidden="true">{sortKey === column.key ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}</span></button> : column.label}<span className="column-resizer" role="separator" aria-label={`Resize ${column.label} column`} onPointerDown={(event) => startResize(event, column)} /></th> })}</tr></thead><tbody>{rows.map((row) => <tr key={rowKey(row)}>{visibleColumns.map((column) => <td className={column.sticky ? 'sticky-column' : ''} key={column.key}>{column.render(row)}</td>)}</tr>)}</tbody></table></div></>
 }

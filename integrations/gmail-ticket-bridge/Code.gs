@@ -331,14 +331,18 @@ function processInventoryAttachmentIntakes_() {
 function processOutboundQueue_() {
   firestoreList_('supportMailQueue').forEach(doc => {
     const row = doc.fields || {};
-    if (readField_(row.status) !== 'Queued') return;
+    const status = readField_(row.status);
+    const attempts = Number(readField_(row.attempts) || 0);
+    if ((status !== 'Queued' && status !== 'Retry') || attempts >= 5) return;
     const payload = JSON.parse(readField_(row.payload) || '{}');
     try {
+      firestorePatch_('supportMailQueue', doc.name.split('/').pop(), { status: 'Processing', attempts: attempts + 1, lastAttemptAt: new Date().toISOString(), error: '' });
       if (payload.to !== readField_(row.recipient)) throw new Error('Recipient mismatch');
       GmailApp.sendEmail(payload.to, payload.subject, payload.body, { from: CONFIG.alias, name: 'Glassco IT Support', replyTo: CONFIG.alias, htmlBody: outboundEmailHtml_(payload) });
-      firestorePatch_('supportMailQueue', doc.name.split('/').pop(), { status: 'Sent', sentAt: new Date().toISOString() });
+      firestorePatch_('supportMailQueue', doc.name.split('/').pop(), { status: 'Sent', sentAt: new Date().toISOString(), error: '' });
     } catch (error) {
-      firestorePatch_('supportMailQueue', doc.name.split('/').pop(), { status: 'Failed', error: String(error), failedAt: new Date().toISOString() });
+      const retry = attempts + 1 < 5;
+      firestorePatch_('supportMailQueue', doc.name.split('/').pop(), { status: retry ? 'Retry' : 'Failed', error: String(error), failedAt: new Date().toISOString(), nextRetryAt: retry ? new Date(Date.now() + 60000).toISOString() : '' });
     }
   });
 }

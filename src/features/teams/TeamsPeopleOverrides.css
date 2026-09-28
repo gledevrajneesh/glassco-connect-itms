@@ -1,0 +1,6 @@
+/* The app shell styles every aside as a dark sidebar. This is a content drawer. */
+.teams-layout .people-profile{display:block;background:#fff;color:#173454;padding:0}
+.teams-layout .people-profile>header{background:#fff;color:#173454;padding:26px;border-bottom:1px solid #dce7ef}
+.teams-layout .people-profile>header h2{color:#173454;margin:6px 0 3px;font-size:25px}
+.teams-layout .people-profile>header p,.teams-layout .people-profile>header small{color:#607a95}
+.teams-layout .people-profile>section{padding:17px 22px;border-bottom:1px solid #e4ecf2}

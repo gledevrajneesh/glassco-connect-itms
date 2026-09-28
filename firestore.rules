@@ -31,7 +31,18 @@ service cloud.firestore {
     }
 
     function hasApp(app) {
-      return activeUser() && (!assignment().keys().hasAny(['appIds']) || (assignment().appIds is list && app in assignment().appIds));
+      return activeUser() && applicationAvailable(app)
+        && (!assignment().keys().hasAny(['appIds']) || (assignment().appIds is list && app in assignment().appIds));
+    }
+
+    function applicationAvailable(app) {
+      let path = /databases/$(database)/documents/operationalValues/applicationAvailability;
+      return email() == 'dev@glasscolabs.com' || !exists(path) || applicationAllowedByPolicy(get(path).data.value, app);
+    }
+
+    function applicationAllowedByPolicy(policy, app) {
+      return !(policy is map) || !policy.keys().hasAny([app]) || policy[app].mode == 'Enabled'
+        || (policy[app].exceptionEmails is list && email() in policy[app].exceptionEmails);
     }
 
     function operationalReader() {
@@ -46,9 +57,29 @@ service cloud.firestore {
       return hasApp('support') && (isAdministrator() || hasRole('administrator') || hasRole('asset-manager') || hasRole('it-head'));
     }
 
+    function ncrOperator() {
+      return hasApp('requests') && (isAdministrator() || hasRole('administrator') || hasRole('department-manager') || hasRole('asset-manager') || hasRole('it-head'));
+    }
+
+    function facilitiesOperator() {
+      return hasApp('facilities') && (isAdministrator() || hasRole('administrator') || hasRole('asset-manager') || hasRole('it-head'));
+    }
+
+    function ownsFacilitiesRequest(data) {
+      return hasApp('facilities') && data.requesterEmail == email();
+    }
+
+    function ownsNcr(data) {
+      return hasApp('requests') && data.requesterEmail == email();
+    }
+
     function supportConfigurationStore(storeId) {
       return storeId in ['supportCategories', 'supportCatalogue', 'supportTeams', 'supportRoutes', 'supportCodes',
         'supportAdminAudit', 'supportKnowledge', 'supportTemplates', 'supportDeliveries', 'supportMailEvents'];
+    }
+
+    function ncrConfigurationStore(storeId) {
+      return storeId == 'ncrApprovalMappings';
     }
 
     match /accessAssignments/{principalEmail} {
@@ -65,20 +96,38 @@ service cloud.firestore {
 
     match /userNotifications/{notificationId} {
       allow read: if signedIn() && resource.data.recipientEmail == email();
-      allow create: if isAdministrator() || hasAdministratorRole();
+      allow create: if isAdministrator() || hasAdministratorRole()
+        || (hasApp('facilities')
+          && request.resource.data.application == 'facilities'
+          && request.resource.data.createdBy == email()
+          && (request.resource.data.recipientEmail == email()
+            || (facilitiesOperator() && request.resource.data.recipientEmail.matches('^[^@]+@glasscolabs[.]com$'))));
       allow update: if signedIn() && resource.data.recipientEmail == email()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt'])
         && request.resource.data.readAt is string;
       allow delete: if false;
     }
 
+    match /userSelfCare/{userEmail} {
+      allow read: if activeUser() && (userEmail == email() || isAdministrator() || hasRole('administrator'));
+      allow create, update: if activeUser() && userEmail == email()
+        && request.resource.data.email == email()
+        && request.resource.data.keys().hasOnly(['email', 'photoDataUrl', 'notificationEmail', 'notificationInApp', 'density', 'updatedAt'])
+        && request.resource.data.photoDataUrl is string
+        && request.resource.data.photoDataUrl.size() <= 900000
+        && request.resource.data.notificationEmail is bool
+        && request.resource.data.notificationInApp is bool
+        && request.resource.data.density in ['Comfortable', 'Compact'];
+      allow delete: if activeUser() && userEmail == email();
+    }
+
     match /operationalStores/{storeId} {
-      allow read: if operationalReader() || (supportConfigurationStore(storeId) && hasApp('support'));
+      allow read: if operationalReader() || (supportConfigurationStore(storeId) && hasApp('support')) || (ncrConfigurationStore(storeId) && hasApp('requests'));
       allow create, update: if isAdministrator() || hasRole('administrator') || (supportConfigurationStore(storeId) && supportAgent());
       allow delete: if false;
 
       match /records/{recordId} {
-        allow read: if operationalReader() || (supportConfigurationStore(storeId) && hasApp('support'));
+        allow read: if operationalReader() || (supportConfigurationStore(storeId) && hasApp('support')) || (ncrConfigurationStore(storeId) && hasApp('requests'));
         allow create: if operationalEditor() || (supportConfigurationStore(storeId) && supportAgent())
           || (storeId == 'supportDeliveries' && hasApp('support') && request.resource.data.recipient == email());
         allow update: if operationalEditor() || (supportConfigurationStore(storeId) && supportAgent())
@@ -91,8 +140,85 @@ service cloud.firestore {
     }
 
     match /operationalValues/{valueId} {
-      allow read: if valueId in ['supportSlaPolicy', 'supportEmailConfiguration'] && hasApp('support');
-      allow create, update: if valueId in ['supportSlaPolicy', 'supportEmailConfiguration'] && supportAgent();
+      allow read: if (valueId in ['supportSlaPolicy', 'supportEmailConfiguration'] && hasApp('support'))
+        || (valueId == 'backupSchedule' && operationalReader())
+        || (valueId == 'ncrMasterData' && hasApp('requests'));
+      allow read: if valueId == 'applicationAvailability' && activeUser();
+      allow read: if valueId == 'facilitiesMasterData' && hasApp('facilities');
+      allow create, update: if (valueId in ['supportSlaPolicy', 'supportEmailConfiguration'] && supportAgent())
+        || (valueId == 'backupSchedule' && operationalEditor());
+      allow create, update: if valueId == 'applicationAvailability' && operationalEditor();
+      allow create, update: if valueId == 'ncrMasterData' && operationalEditor();
+      allow create, update: if valueId == 'facilitiesMasterData' && facilitiesOperator();
+      allow delete: if false;
+    }
+
+    match /facilitiesRequests/{requestId} {
+      allow read: if facilitiesOperator() || ownsFacilitiesRequest(resource.data)
+        || (ncrOperator() && resource.data.state == 'Waiting for material');
+      allow create: if ownsFacilitiesRequest(request.resource.data)
+        && request.resource.data.id == requestId
+        && request.resource.data.state == 'Submitted'
+        && request.resource.data.audit is list
+        && request.resource.data.audit.size() == 1;
+      allow update: if request.resource.data.id == resource.data.id
+        && request.resource.data.requesterEmail == resource.data.requesterEmail
+        && request.resource.data.code == resource.data.code
+        && (facilitiesOperator()
+          || (ncrOperator()
+            && resource.data.state == 'Waiting for material'
+            && request.resource.data.state == 'In progress'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state','waitingReason','nextActionAt','materialNcrId','materialNcrCode','materialGrnNumber','updatedAt','audit'])
+            && request.resource.data.materialNcrId is string
+            && get(/databases/$(database)/documents/ncrRequests/$(request.resource.data.materialNcrId)).data.sourceFacilitiesRequestId == requestId
+            && get(/databases/$(database)/documents/ncrRequests/$(request.resource.data.materialNcrId)).data.state in ['Partially fulfilled','Fulfilled'])
+          || (ownsFacilitiesRequest(resource.data)
+            && resource.data.state == 'Resolved'
+            && request.resource.data.state in ['Closed','Reopened']));
+      allow delete: if false;
+    }
+
+    match /facilitiesAttachmentIntakes/{intakeId} {
+      allow read: if facilitiesOperator() || (hasApp('facilities') && resource.data.requesterEmail == email());
+      allow create: if hasApp('facilities')
+        && request.resource.data.id == intakeId
+        && request.resource.data.requesterEmail == email()
+        && request.resource.data.uploadedBy == email()
+        && request.resource.data.status == 'Queued'
+        && request.resource.data.sourceMarker is string
+        && request.resource.data.sourceMarker.matches('^glassco-connect-facilities:.+')
+        && request.resource.data.keys().hasOnly(['id','requestId','requestCode','requesterEmail','sourceDriveFileId','sourceMarker','name','contentType','size','status','createdAt','uploadedAt','uploadedBy']);
+      allow update, delete: if false;
+    }
+
+    match /facilitiesRatings/{requestId} {
+      allow read: if facilitiesOperator()
+        || (hasApp('facilities') && resource.data.requesterEmail == email());
+      allow create: if hasApp('facilities')
+        && request.resource.data.requestId == requestId
+        && request.resource.data.requesterEmail == email()
+        && request.resource.data.keys().hasOnly(['requestId','requestCode','requesterEmail','stars','comment','submittedAt'])
+        && request.resource.data.stars is int
+        && request.resource.data.stars >= 1
+        && request.resource.data.stars <= 5
+        && request.resource.data.comment is string
+        && request.resource.data.comment.size() <= 1000
+        && get(/databases/$(database)/documents/facilitiesRequests/$(requestId)).data.requesterEmail == email()
+        && get(/databases/$(database)/documents/facilitiesRequests/$(requestId)).data.state in ['Resolved','Closed'];
+      allow update, delete: if false;
+    }
+
+    match /facilitiesMaterialReferrals/{referralId} {
+      allow read: if facilitiesOperator() || ncrOperator();
+      allow create: if facilitiesOperator()
+        && request.resource.data.id == referralId
+        && request.resource.data.createdBy == email()
+        && request.resource.data.status == 'Pending NCR action'
+        && get(/databases/$(database)/documents/facilitiesRequests/$(request.resource.data.facilitiesRequestId)).data.state == 'Waiting for material';
+      allow update: if ncrOperator()
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.facilitiesRequestId == resource.data.facilitiesRequestId
+        && request.resource.data.status in ['NCR created','Cancelled'];
       allow delete: if false;
     }
 
@@ -133,6 +259,24 @@ service cloud.firestore {
         && (supportAgent() || (ownsTicket(resource.data) && (employeeReply()
           || (resource.data.status == 'Resolved' && request.resource.data.status == 'Open'
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','resolutionSummary','updatedAt','history'])))));
+      allow delete: if false;
+    }
+
+    match /ncrRequests/{requestId} {
+      allow read: if ncrOperator() || ownsNcr(resource.data);
+      allow create: if ownsNcr(request.resource.data)
+        && request.resource.data.id == requestId
+        && request.resource.data.state in ['Draft', 'Submitted']
+        && request.resource.data.code is string
+        && request.resource.data.code.size() > 0
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0;
+      allow update: if request.resource.data.id == resource.data.id
+        && request.resource.data.code == resource.data.code
+        && request.resource.data.requesterEmail == resource.data.requesterEmail
+        && (ncrOperator() || (ownsNcr(resource.data)
+          && resource.data.state in ['Draft', 'Returned for correction']
+          && request.resource.data.state in ['Draft', 'Submitted']));
       allow delete: if false;
     }
 
@@ -255,12 +399,193 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Shared workspace integration fabric. Links and events are immutable so an
+    // application can retry safely without losing the original business trail.
+    match /workspaceLinks/{linkId} {
+      allow read: if activeUser();
+      allow create: if activeUser()
+        && request.resource.data.id == linkId
+        && request.resource.data.createdBy == email()
+        && request.resource.data.source.recordId is string
+        && request.resource.data.target.recordId is string
+        && request.resource.data.status == 'Active';
+      allow update: if (isAdministrator() || hasAdministratorRole())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status == 'Superseded';
+      allow delete: if false;
+    }
+
+    match /workspaceEvents/{eventId} {
+      allow read: if operationalReader() || supportAgent() || ncrOperator();
+      allow create: if activeUser()
+        && request.resource.data.id == eventId
+        && request.resource.data.idempotencyKey == eventId
+        && request.resource.data.actorEmail == email()
+        && request.resource.data.deliveryStatus == 'Pending'
+        && request.resource.data.attempts == 0;
+      allow update: if isAdministrator() || hasAdministratorRole();
+      allow delete: if false;
+    }
+
+    match /workspaceIntegrationHealth/{healthId} {
+      allow read: if operationalReader() || supportAgent() || ncrOperator();
+      allow create, update: if isAdministrator() || hasAdministratorRole() || operationalEditor();
+      allow delete: if false;
+    }
+
+    match /workspaceAudit/{auditId} {
+      allow read: if operationalReader() || hasRole('auditor');
+      allow create: if activeUser() && request.resource.data.actor == email();
+      allow update, delete: if false;
+    }
+
+    // Shared, expiring edit leases prevent parallel master-data overwrites.
+    // A record remains viewable while another editor holds the lease.
+    match /workspaceEditLeases/{leaseId} {
+      allow read: if activeUser();
+      allow create: if activeUser()
+        && request.resource.data.ownerEmail == email()
+        && request.resource.data.expiresAt is timestamp;
+      allow update: if activeUser() && request.resource.data.expiresAt is timestamp
+        && (resource.data.ownerEmail == email()
+          || resource.data.expiresAt < request.time
+          || isAdministrator() || hasAdministratorRole());
+      allow delete: if false;
+    }
+
     match /supportMailQueue/{mailId} {
       allow read: if operationalReader();
-      allow create: if (isAdministrator() || hasAdministratorRole() || supportAgent() || (hasApp('support') && request.resource.data.recipient == email()
-        && request.resource.data.event == 'Ticket created'
-        && get(/databases/$(database)/documents/supportTickets/$(request.resource.data.ticketId)).data.requesterEmail == email()))
-        && request.resource.data.status == 'Queued';
+      allow create: if request.resource.data.status == 'Queued'
+        && ((hasApp('requests') && request.resource.data.event == 'Purchase request submitted'
+          && get(/databases/$(database)/documents/ncrRequests/$(request.resource.data.ticketId)).data.requesterEmail == email()
+          && (request.resource.data.recipient in [email(), get(/databases/$(database)/documents/ncrRequests/$(request.resource.data.ticketId)).data.approverEmail]
+            || (get(/databases/$(database)/documents/ncrRequests/$(request.resource.data.ticketId)).data.keys().hasAny(['approvalEmails'])
+              && get(/databases/$(database)/documents/ncrRequests/$(request.resource.data.ticketId)).data.approvalEmails is list
+              && request.resource.data.recipient in get(/databases/$(database)/documents/ncrRequests/$(request.resource.data.ticketId)).data.approvalEmails))
+          && request.resource.data.recipient.matches('^[^@]+@glasscolabs[.]com$'))
+        || (hasApp('support') && request.resource.data.recipient == email()
+          && request.resource.data.event == 'Ticket created'
+          && get(/databases/$(database)/documents/supportTickets/$(request.resource.data.ticketId)).data.requesterEmail == email())
+        || isAdministrator() || hasAdministratorRole() || supportAgent() || ncrOperator());
+      allow update, delete: if false;
+    }
+
+    match /flowTeams/{teamId} {
+      allow read: if (hasApp('flow') || hasApp('teams')) && (isAdministrator() || hasAdministratorRole()
+        || resource.data.managerEmail == email() || resource.data.createdBy == email()
+        || (resource.data.keys().hasAny(['memberEmails']) && resource.data.memberEmails.hasAny([email()])));
+      allow create: if (hasApp('flow') || hasApp('teams')) && request.resource.data.managerEmail is string
+        && request.resource.data.createdBy == email() && request.resource.data.memberEmails is list;
+      allow update: if (hasApp('flow') || hasApp('teams')) && (isAdministrator() || hasAdministratorRole()
+        || resource.data.managerEmail == email() || resource.data.createdBy == email());
+      allow delete: if isAdministrator() || hasAdministratorRole();
+    }
+
+    match /flowGoals/{goalId} {
+      allow read: if hasApp('flow') && (isAdministrator() || hasAdministratorRole()
+        || resource.data.ownerEmail == email() || resource.data.createdBy == email()
+        || (resource.data.keys().hasAny(['participantEmails']) && resource.data.participantEmails.hasAny([email()])));
+      allow create: if hasApp('flow') && request.resource.data.ownerEmail is string
+        && request.resource.data.createdBy == email() && request.resource.data.participantEmails is list;
+      allow update: if hasApp('flow') && (isAdministrator() || hasAdministratorRole()
+        || resource.data.ownerEmail == email() || resource.data.createdBy == email());
+      allow delete: if isAdministrator() || hasAdministratorRole();
+    }
+
+    match /flowProjects/{projectId} {
+      allow read: if (hasApp('flow') || hasApp('teams')) && (isAdministrator() || hasAdministratorRole()
+        || resource.data.ownerEmail == email() || resource.data.createdBy == email()
+        || (resource.data.keys().hasAny(['participantEmails']) && resource.data.participantEmails.hasAny([email()])));
+      allow create: if hasApp('flow') && request.resource.data.ownerEmail is string
+        && request.resource.data.createdBy == email() && request.resource.data.participantEmails is list;
+      allow update: if hasApp('flow') && (isAdministrator() || hasAdministratorRole()
+        || resource.data.ownerEmail == email() || resource.data.createdBy == email());
+      allow delete: if isAdministrator() || hasAdministratorRole();
+    }
+
+    match /flowProjectUpdates/{updateId} {
+      allow read: if (hasApp('teams') || hasApp('flow'))
+        && (isAdministrator() || hasAdministratorRole()
+          || resource.data.authorEmail == email()
+          || (resource.data.keys().hasAny(['participantEmails'])
+            && resource.data.participantEmails.hasAny([email()])));
+      allow create: if (hasApp('teams') || hasApp('flow'))
+        && request.resource.data.authorEmail == email()
+        && request.resource.data.participantEmails is list
+        && request.resource.data.participantEmails.hasAny([email()]);
+      allow update, delete: if isAdministrator() || hasAdministratorRole()
+        || resource.data.authorEmail == email();
+    }
+
+    match /flowCheckins/{checkInId} {
+      allow read: if hasApp('teams') && (isAdministrator() || hasAdministratorRole()
+        || resource.data.authorEmail == email()
+        || (resource.data.keys().hasAny(['participantEmails']) && resource.data.participantEmails.hasAny([email()])));
+      allow create: if hasApp('teams') && request.resource.data.authorEmail == email()
+        && request.resource.data.participantEmails is list;
+      allow update: if hasApp('teams') && (isAdministrator() || hasAdministratorRole()
+        || resource.data.authorEmail == email());
+      allow delete: if isAdministrator() || hasAdministratorRole();
+    }
+
+    match /flowTaskNotes/{noteId} {
+      allow read: if hasApp('teams') && (isAdministrator() || hasAdministratorRole()
+        || resource.data.authorEmail == email()
+        || (resource.data.keys().hasAny(['participantEmails']) && resource.data.participantEmails.hasAny([email()])));
+      allow create: if hasApp('teams') && request.resource.data.authorEmail == email()
+        && request.resource.data.participantEmails is list;
+      allow update, delete: if false;
+    }
+
+    match /flowMilestones/{milestoneId} {
+      allow read: if hasApp('teams') && (isAdministrator() || hasAdministratorRole()
+        || resource.data.ownerEmail == email()
+        || (resource.data.keys().hasAny(['participantEmails']) && resource.data.participantEmails.hasAny([email()])));
+      allow create: if hasApp('teams') && request.resource.data.ownerEmail == email()
+        && request.resource.data.participantEmails is list;
+      allow update: if hasApp('teams') && (isAdministrator() || hasAdministratorRole() || resource.data.ownerEmail == email());
+      allow delete: if isAdministrator() || hasAdministratorRole();
+    }
+
+    match /flowCycles/{cycleId} {
+      allow read: if hasApp('teams') && (isAdministrator() || hasAdministratorRole()
+        || resource.data.managerEmail == email()
+        || (resource.data.keys().hasAny(['participantEmails']) && resource.data.participantEmails.hasAny([email()])));
+      allow create: if hasApp('teams') && (isAdministrator() || hasAdministratorRole()
+        || request.resource.data.managerEmail == email())
+        && request.resource.data.createdBy == email() && request.resource.data.participantEmails is list;
+      allow update: if hasApp('teams') && (isAdministrator() || hasAdministratorRole()
+        || resource.data.managerEmail == email());
+      allow delete: if isAdministrator() || hasAdministratorRole();
+    }
+
+    match /flowTasks/{taskId} {
+      allow read: if (hasApp('flow') || hasApp('teams')) && (isAdministrator() || hasAdministratorRole()
+        || resource.data.ownerEmail == email() || resource.data.createdBy == email()
+        || (resource.data.keys().hasAny(['participantEmails']) && resource.data.participantEmails.hasAny([email()])));
+      allow create: if (hasApp('flow') || hasApp('teams')) && request.resource.data.ownerEmail is string
+        && request.resource.data.createdBy == email() && request.resource.data.participantEmails is list;
+      allow update: if (hasApp('flow') || hasApp('teams')) && (isAdministrator() || hasAdministratorRole()
+        || resource.data.ownerEmail == email() || resource.data.createdBy == email()
+        || (resource.data.keys().hasAny(['managerEmail']) && resource.data.managerEmail == email()));
+      allow delete: if isAdministrator() || hasAdministratorRole();
+    }
+
+    match /flowMeetings/{meetingId} {
+      allow read: if hasApp('flow') && (isAdministrator() || hasAdministratorRole()
+        || resource.data.ownerEmail == email() || resource.data.createdBy == email()
+        || (resource.data.keys().hasAny(['participantEmails']) && resource.data.participantEmails.hasAny([email()])));
+      allow create: if hasApp('flow') && request.resource.data.ownerEmail is string
+        && request.resource.data.createdBy == email() && request.resource.data.participantEmails is list;
+      allow update: if hasApp('flow') && (isAdministrator() || hasAdministratorRole()
+        || resource.data.ownerEmail == email() || resource.data.createdBy == email());
+      allow delete: if isAdministrator() || hasAdministratorRole();
+    }
+
+    match /flowActivity/{activityId} {
+      allow read: if (hasApp('flow') || hasApp('teams')) && (isAdministrator() || hasAdministratorRole()
+        || resource.data.actorEmail == email());
+      allow create: if (hasApp('flow') || hasApp('teams')) && request.resource.data.actorEmail == email();
       allow update, delete: if false;
     }
 

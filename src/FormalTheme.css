@@ -14,6 +14,15 @@ button,a,input,select,textarea{font-weight:400}
 .environment,.phase,.planned{font-weight:600}
 .operation-heading h2,.panel-heading h2,.section-title h2{font-weight:600}
 .master-tabs button.selected,.workspace-tabs button.selected{font-weight:550}
+
+/* Shared selection standard: light tint and high-contrast text across ITMS. */
+:root{--selection-surface:#e8f7fc;--selection-text:#006f9f;--selection-line:#1397cf}
+:where(.workspace-tabs,.master-tabs,.notification-panel>nav) button.selected,
+.notification-panel>nav button.active,
+.asset-register-views button.selected{background:var(--selection-surface)!important;color:var(--selection-text)!important;border-color:#9ed7eb!important;box-shadow:inset 0 -3px 0 var(--selection-line)}
+:where(.workspace-tabs,.master-tabs,.notification-panel>nav) button.selected:hover,
+.notification-panel>nav button.active:hover,
+.asset-register-views button.selected:hover{background:#dff3fa!important;color:#005e87!important}
 .primary-action,.secondary-action,.all-apps,.table-action{font-weight:500}
 .status,.custody-state,.access-state{font-weight:550}
 .master-summary strong,.status-grid strong{font-weight:600}

@@ -1,5 +1,5 @@
 import Icon, { type IconName } from '../../components/Icon'
-import type { GlasscoApplicationId } from '../../lib/applicationAccess'
+import { applicationIsAvailable, type ApplicationAvailability, type GlasscoApplicationId } from '../../lib/applicationAccess'
 
 type PlatformApp = {
   id: string
@@ -18,8 +18,8 @@ const applications: PlatformApp[] = [
   { id: 'visitors', name: 'Visitor Management', description: 'Visitor approvals and controlled entry.', shortName: 'VMS', icon: 'visitor', state: 'planned' },
 ]
 
-export default function AppLauncher({ onOpen, identityEmail, identityName, authorizedAppIds }: { onOpen: (appId: string) => void; identityEmail: string; identityName: string; authorizedAppIds: GlasscoApplicationId[] }) {
-  const availableApplications=applications.map(app=>app.state==='planned'?app:{...app,state:authorizedAppIds.includes(app.id as GlasscoApplicationId)?'authorized' as const:'no-access' as const})
+export default function AppLauncher({ onOpen, identityEmail, identityName, authorizedAppIds, applicationAvailability }: { onOpen: (appId: string) => void; identityEmail: string; identityName: string; authorizedAppIds: GlasscoApplicationId[]; applicationAvailability:ApplicationAvailability }) {
+  const availableApplications=applications.filter(app=>app.state==='planned'||applicationIsAvailable(app.id as GlasscoApplicationId,identityEmail,applicationAvailability)).map(app=>app.state==='planned'?app:{...app,state:authorizedAppIds.includes(app.id as GlasscoApplicationId)?'authorized' as const:'no-access' as const})
   const authorized = availableApplications.filter((app) => app.state === 'authorized')
   const otherApps = availableApplications.filter((app) => app.state !== 'authorized')
   const hour = new Date().getHours()

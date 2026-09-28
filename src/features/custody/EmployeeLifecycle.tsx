@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import DataTable from '../../components/DataTable'
 import { useLocalStore } from '../../lib/localStore'
 import { deriveCustody, type AssetDisposition, type CustodyMovement } from '../../lib/custodyLifecycle'
@@ -14,7 +14,9 @@ type Allocation = { id: string; code: string; departmentId: string; userId: stri
 type LifecycleRecord = { id: string; code: string; kind: 'Onboarding' | 'Offboarding'; userId: string; departmentId: string; effectiveDate: string; assetIds: string[]; disposition?: AssetDisposition; deactivateUser?: boolean; notes: string; state: 'Prepared' | 'Employee signed' | 'IT Manager signed' | 'Completed'; createdAt: string; employeeSignedAt: string; managerSignedAt: string; employeeSignerName?: string; managerSignerName?: string; employeeAcknowledgement?: string; managerAcknowledgement?: string }
 
 const today = () => new Date().toISOString().slice(0, 10)
-export default function EmployeeLifecycle() {
+type EmployeeLifecycleProps = { initialUserId?: string }
+
+export default function EmployeeLifecycle({ initialUserId = '' }: EmployeeLifecycleProps = {}) {
   const [departments] = useLocalStore<Department[]>('itms.departments.v1', [])
   const [users, setUsers] = useLocalStore<User[]>('itms.users.v1', [])
   const [assets, setAssets] = useLocalStore<Asset[]>('itms.assets.v1', [])
@@ -25,7 +27,7 @@ export default function EmployeeLifecycle() {
   const [records, setRecords] = useLocalStore<LifecycleRecord[]>('itms.employee-lifecycle.v1', [])
   const [kind, setKind] = useState<'Onboarding' | 'Offboarding'>('Onboarding')
   const [departmentId, setDepartmentId] = useState('')
-  const [userId, setUserId] = useState('')
+  const [userId, setUserId] = useState(initialUserId)
   const [effectiveDate, setEffectiveDate] = useState(today())
   const [selected, setSelected] = useState<string[]>([])
   const [groupIds, setGroupIds] = useState<string[]>([])
@@ -33,11 +35,27 @@ export default function EmployeeLifecycle() {
   const [disposition, setDisposition] = useState<AssetDisposition>('In stock')
   const [deactivateUser, setDeactivateUser] = useState(true)
   const [open, setOpen] = useState(false)
+  const [registerSearch, setRegisterSearch] = useState('')
+  const [registerDepartment, setRegisterDepartment] = useState('all')
+  const [registerUser, setRegisterUser] = useState('all')
+  const [registerProcess, setRegisterProcess] = useState('all')
+  const [registerStatus, setRegisterStatus] = useState('all')
   const [printRecord, setPrintRecord] = useState<LifecycleRecord | null>(null)
   const [signTarget, setSignTarget] = useState<{ id: string; role: 'Employee' | 'IT Manager' } | null>(null)
   const [signerName, setSignerName] = useState('')
   const [acknowledged, setAcknowledged] = useState(false)
   const custody = useMemo(() => deriveCustody(allocations, movements, assets), [allocations, movements, assets])
+  useEffect(() => {
+    if (!initialUserId) return
+    const initialUser = users.find((item) => item.id === initialUserId)
+    if (!initialUser) return
+    setKind('Onboarding')
+    setDepartmentId(initialUser.departmentId)
+    setUserId(initialUser.id)
+    setSelected([])
+    setGroupIds([])
+    setOpen(true)
+  }, [initialUserId, users])
   const departmentUsers = users.filter((user) => user.departmentId === departmentId && (kind === 'Offboarding' ? custodyHasUser(user.id) : user.status === 'Active'))
   const heldAssets = assets.filter((asset) => custody.get(asset.id)?.userId === userId)
   const availableAssets = assets.filter((asset) => asset.stockStatus === 'In stock' && !custody.has(asset.id))
@@ -52,6 +70,17 @@ export default function EmployeeLifecycle() {
   function beginSign(record: LifecycleRecord) { if (record.state === 'IT Manager signed') { sign(record.id); return } const role = record.state === 'Prepared' ? 'Employee' : 'IT Manager'; setSignTarget({ id: record.id, role }); setSignerName(role === 'Employee' ? users.find((user) => user.id === record.userId)?.name ?? '' : ''); setAcknowledged(false) }
   function confirmSign(event: FormEvent) { event.preventDefault(); if (!signTarget || !acknowledged || !signerName.trim()) return; sign(signTarget.id, signerName.trim()); setSignTarget(null); setSignerName(''); setAcknowledged(false) }
   function print(record: LifecycleRecord) { setPrintRecord({ ...record, assetIds: resolvedAssetIds(record) }); setTimeout(() => window.print(), 80) }
+  const filteredRecords = useMemo(() => {
+    const query = registerSearch.trim().toLowerCase()
+    return records.filter((record) => {
+      const searchable = `${record.code} ${record.kind} ${userLabel(record.userId)} ${record.notes} ${record.assetIds.map(assetLabel).join(' ')}`.toLowerCase()
+      return (registerDepartment === 'all' || record.departmentId === registerDepartment)
+        && (registerUser === 'all' || record.userId === registerUser)
+        && (registerProcess === 'all' || record.kind === registerProcess)
+        && (registerStatus === 'all' || record.state === registerStatus)
+        && (!query || searchable.includes(query))
+    })
+  }, [records, registerSearch, registerDepartment, registerUser, registerProcess, registerStatus, users, assets, models])
   const displayed = printRecord
   const person = users.find((item) => item.id === displayed?.userId)
   const department = departments.find((item) => item.id === displayed?.departmentId)
@@ -68,8 +97,16 @@ export default function EmployeeLifecycle() {
       <label className="wide-field">Handover / clearance notes<textarea required value={notes} onChange={(event) => setNotes(event.target.value)} /></label><div className="form-actions"><button type="button" onClick={() => setOpen(false)}>Cancel</button><button className="primary-action" type="submit" disabled={!userId || (kind === 'Offboarding' && heldAssets.length === 0)}>Prepare sign-off form</button></div>
     </form>}
     {signTarget && <form className="lifecycle-signoff" onSubmit={confirmSign}><div><span className="eyebrow">CONTROLLED {signTarget.role.toUpperCase()} ACKNOWLEDGEMENT</span><h3>{records.find((item) => item.id === signTarget.id)?.code}</h3><p>{signTarget.role === 'Employee' ? 'I confirm my identity, the listed asset custody and the applicable handover or return declaration.' : 'I confirm that I reviewed the employee identity, asset list, condition, exceptions and lifecycle decision.'}</p></div><label>Full name<input required autoFocus value={signerName} onChange={(event) => setSignerName(event.target.value)} /></label><label className="signoff-confirm"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /><span>I understand that this name, authenticated session and timestamp become part of the permanent lifecycle record.</span></label><div className="form-actions"><button type="button" onClick={() => setSignTarget(null)}>Cancel</button><button type="submit" className="primary-action" disabled={!acknowledged || !signerName.trim()}>Record {signTarget.role} sign-off</button></div></form>}
+    <div className="allocation-register-filters" aria-label="Filter employee lifecycle records">
+      <label className="allocation-filter-search">Search lifecycle register<input value={registerSearch} onChange={(event) => setRegisterSearch(event.target.value)} placeholder="Process ID, employee, asset or notes" /></label>
+      <label>Department<select value={registerDepartment} onChange={(event) => { setRegisterDepartment(event.target.value); setRegisterUser('all') }}><option value="all">All departments</option>{departments.filter((item) => item.status === 'Active').map((item) => <option value={item.id} key={item.id}>{item.code} · {item.name}</option>)}</select></label>
+      <label>Employee<select value={registerUser} onChange={(event) => setRegisterUser(event.target.value)}><option value="all">All employees</option>{users.filter((item) => registerDepartment === 'all' || item.departmentId === registerDepartment).map((item) => <option value={item.id} key={item.id}>{item.employeeCode} · {item.name}</option>)}</select></label>
+      <label>Process<select value={registerProcess} onChange={(event) => setRegisterProcess(event.target.value)}><option value="all">All processes</option><option>Onboarding</option><option>Offboarding</option></select></label>
+      <label>Status<select value={registerStatus} onChange={(event) => setRegisterStatus(event.target.value)}><option value="all">All statuses</option>{[...new Set(records.map((item) => item.state))].map((item) => <option value={item} key={item}>{item}</option>)}</select></label>
+      <div className="allocation-filter-footer"><span>Showing <strong>{filteredRecords.length}</strong> of {records.length} lifecycle records</span><button type="button" className="secondary-action" onClick={() => { setRegisterSearch(''); setRegisterDepartment('all'); setRegisterUser('all'); setRegisterProcess('all'); setRegisterStatus('all') }}>Clear filters</button></div>
+    </div>
     <div className="master-summary"><div><span>Lifecycle records</span><strong>{records.length}</strong></div><div><span>Awaiting signatures</span><strong>{records.filter((item) => item.state !== 'Completed').length}</strong></div><div><span>Completed</span><strong>{records.filter((item) => item.state === 'Completed').length}</strong></div></div>
-    <DataTable rows={[...records].reverse()} rowKey={(item) => item.id} columns={[{ key: 'code', label: 'Process', sticky: true, width: '180px', render: (item) => <><strong>{item.code}</strong><small>{item.kind}</small></> }, { key: 'employee', label: 'Employee', width: '230px', render: (item) => userLabel(item.userId) }, { key: 'date', label: 'Effective date', width: '130px', render: (item) => item.effectiveDate }, { key: 'assets', label: 'Assets', width: '420px', render: (item) => { const ids = resolvedAssetIds(item); return ids.length ? ids.map(assetLabel).join(' | ') : 'No active custody found' } }, { key: 'state', label: 'Sign-off status', width: '170px', render: (item) => item.state }, { key: 'actions', label: 'Actions', width: '300px', render: (item) => <div className="table-actions"><button className="table-action" type="button" onClick={() => print(item)}>Print / PDF</button>{item.state !== 'Completed' && <button className="table-action" type="button" onClick={() => beginSign(item)}>{item.state === 'Prepared' ? 'Employee sign' : item.state === 'Employee signed' ? 'IT Manager sign' : 'Complete'}</button>}<a className="table-action" href={`mailto:${users.find((user) => user.id === item.userId)?.email ?? ''}?subject=${encodeURIComponent(`${item.code} IT asset ${item.kind.toLowerCase()} form`)}`}>Email</a></div> }]} empty={<div className="empty-state"><strong>No lifecycle forms</strong><p>Prepare the first onboarding or offboarding sign-off.</p></div>} />
+    <DataTable rows={[...filteredRecords].reverse()} rowKey={(item) => item.id} columns={[{ key: 'code', label: 'Process', sticky: true, width: '180px', render: (item) => <><strong>{item.code}</strong><small>{item.kind}</small></> }, { key: 'employee', label: 'Employee', width: '230px', render: (item) => userLabel(item.userId) }, { key: 'date', label: 'Effective date', width: '130px', render: (item) => item.effectiveDate }, { key: 'assets', label: 'Assets', width: '420px', render: (item) => { const ids = resolvedAssetIds(item); return ids.length ? ids.map(assetLabel).join(' | ') : 'No active custody found' } }, { key: 'state', label: 'Sign-off status', width: '170px', render: (item) => item.state }, { key: 'actions', label: 'Actions', width: '300px', render: (item) => <div className="table-actions"><button className="table-action" type="button" onClick={() => print(item)}>Print / PDF</button>{item.state !== 'Completed' && <button className="table-action" type="button" onClick={() => beginSign(item)}>{item.state === 'Prepared' ? 'Employee sign' : item.state === 'Employee signed' ? 'IT Manager sign' : 'Complete'}</button>}<a className="table-action" href={`mailto:${users.find((user) => user.id === item.userId)?.email ?? ''}?subject=${encodeURIComponent(`${item.code} IT asset ${item.kind.toLowerCase()} form`)}`}>Email</a></div> }]} empty={<div className="empty-state"><strong>No lifecycle forms match these filters</strong><p>Clear filters or prepare the first onboarding or offboarding sign-off.</p></div>} />
     {displayed && <article className="lifecycle-print" aria-hidden="true"><header><div className="print-brand"><strong>GLASSCO</strong><span>CONNECT · ITMS</span></div><div><span>CONTROLLED IT ASSET RECORD</span><strong>{displayed.code}</strong></div></header><h1>IT Asset {displayed.kind === 'Onboarding' ? 'Handover' : 'Clearance & Return'} Form</h1><div className="print-meta"><p><span>Employee</span><strong>{person?.name}</strong></p><p><span>Employee code</span><strong>{person?.employeeCode}</strong></p><p><span>Department</span><strong>{department?.name}</strong></p><p><span>Effective date</span><strong>{displayed.effectiveDate}</strong></p><p><span>Email</span><strong>{person?.email}</strong></p><p><span>Contact</span><strong>{person?.phone || '—'}</strong></p></div><table><thead><tr><th>#</th><th>Asset ID</th><th>Description</th><th>Serial number</th><th>Condition / remarks</th></tr></thead><tbody>{displayed.assetIds.length ? displayed.assetIds.map((id, index) => { const asset = assets.find((item) => item.id === id); return <tr key={id}><td>{index + 1}</td><td>{asset?.assetId}</td><td>{assetLabel(id).split(' · ').slice(1, 2)}</td><td>{asset?.serialNumber || '—'}</td><td></td></tr> }) : <tr><td colSpan={5}>No IT asset issued under this record.</td></tr>}</tbody></table>{displayed.kind === 'Offboarding' && <section className="clearance-notes"><strong>IT Clearance Notes</strong><div><span>Returned asset condition / inspection observations</span><i></i></div><div><span>Missing accessories, damage or recovery exception</span><i></i></div><div><span>Pending IT action / reference number</span><i></i></div><div><span>Final clearance remarks</span><i></i></div><p><b>User Master decision:</b> {displayed.deactivateUser !== false ? 'Deactivate employee when clearance completes' : 'Keep employee active as a controlled exception'}</p></section>}<section className="print-terms"><strong>IT Asset Use Terms &amp; Conditions</strong><ol><li>Company IT assets shall be used only for authorised business purposes and in accordance with applicable information-security and acceptable-use policies.</li><li>The employee shall exercise reasonable care, protect credentials and data, and prevent unauthorised access, lending, transfer, modification or tampering.</li><li>Loss, theft, damage, malfunction, security incidents or suspected compromise must be reported promptly to the IT team.</li><li>Software, accessories, configuration and security controls shall not be removed, bypassed or altered without prior IT authorisation.</li><li>The company may inspect, maintain, update, recover or recall its assets in accordance with company policy and applicable law.</li><li>All assets and accessories must be returned when requested, upon role change or separation; shortages, damage and exceptions will be reviewed under company policy.</li></ol></section><section className="print-declaration"><strong>Declaration</strong><p>{displayed.kind === 'Onboarding' ? 'I acknowledge receipt of the listed company IT assets, understand the above terms and accept responsibility for their authorised use, reasonable care and return when requested.' : 'The listed IT assets have been returned for inspection. Final clearance remains subject to verification of condition, completeness and outstanding exceptions.'}</p><p><b>Process notes:</b> {displayed.notes}</p></section><div className="signature-grid"><div><span>Employee acknowledgement</span><i></i><small>{displayed.employeeSignerName ? `${displayed.employeeSignerName} · ${new Date(displayed.employeeSignedAt).toLocaleString('en-IN')}` : 'Name / signature / date'}</small></div><div><span>IT Manager acknowledgement</span><i></i><small>{displayed.managerSignerName ? `${displayed.managerSignerName} · ${new Date(displayed.managerSignedAt).toLocaleString('en-IN')}` : 'Name / signature / date'}</small></div></div><footer>System-generated by Glassco Connect ITMS · Verify against the live controlled record {displayed.code}</footer></article>}
   </section>
 }

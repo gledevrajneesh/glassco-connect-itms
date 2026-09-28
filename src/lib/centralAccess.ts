@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, getDoc, getDocs, setDoc } from 'firebase/firestore'
+import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, setDoc, type Unsubscribe } from 'firebase/firestore'
 import { firestore } from './firebase'
 import type { RoleId } from './accessControl'
 import type { GlasscoApplicationId } from './applicationAccess'
@@ -38,6 +38,13 @@ export async function getCentralAssignment(email: string) {
   if (!firestore) return null
   const snapshot = await getDoc(doc(firestore, 'accessAssignments', accessDocumentId(email)))
   return snapshot.exists() ? ({ ...snapshot.data(), id: snapshot.data().id || snapshot.id } as CentralAccessAssignment) : null
+}
+
+export function subscribeCentralAssignment(email: string, receive: (assignment: CentralAccessAssignment | null) => void): Unsubscribe {
+  if (!firestore) { receive(null); return () => undefined }
+  return onSnapshot(doc(firestore, 'accessAssignments', accessDocumentId(email)), (snapshot) => {
+    receive(snapshot.exists() ? ({ ...snapshot.data(), id: snapshot.data().id || snapshot.id } as CentralAccessAssignment) : null)
+  }, () => receive(null))
 }
 
 export async function loadCentralAssignments() {

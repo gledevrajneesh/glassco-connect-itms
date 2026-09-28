@@ -11,6 +11,7 @@
     "test:bulk": "node scripts/verify-bulk-fixtures.mjs",
     "test:rules": "npx firebase-tools emulators:exec --config firebase.test.json --only firestore \"node scripts/test-support-rules.mjs\"",
     "verify:go-live": "node scripts/verify-go-live.mjs",
+    "verify:ncr-lifecycle": "node --experimental-strip-types scripts/verify-ncr-lifecycle.mjs",
     "backup:firestore": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup-firestore.ps1"
   },
   "dependencies": {

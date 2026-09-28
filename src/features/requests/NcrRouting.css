@@ -1,0 +1,54 @@
+.ncr-identity select {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #c9d5e2;
+  border-radius: 7px;
+  background: #fff;
+  color: #21364e;
+}
+
+.ncr-route-warning {
+  margin: 0 18px 12px;
+  padding: 10px 12px;
+  border: 1px solid #f0c36a;
+  border-radius: 8px;
+  background: #fff8e8;
+  color: #805800;
+  font-size: 12px;
+}
+
+/* Keep column labels attached to the register instead of using a viewport
+   offset, which can overlap the first row at browser zoom levels above 100%. */
+.ncr-list {
+  max-height: min(620px, calc(100vh - 285px));
+  min-height: 180px;
+  overflow: auto;
+}
+
+.ncr-list > header {
+  top: 0;
+  z-index: 12;
+  box-shadow: 0 1px 0 #d8e2ec;
+}
+
+.ncr-operator {
+  max-height: min(640px, calc(100vh - 220px));
+  min-height: 180px;
+  overflow: auto;
+}
+
+.ncr-operator > header {
+  top: 0;
+  z-index: 12;
+  box-shadow: 0 1px 0 #d8e2ec;
+}
+
+@media (max-width: 760px) {
+  .ncr-list {
+    max-height: calc(100vh - 250px);
+  }
+
+  .ncr-operator {
+    max-height: calc(100vh - 205px);
+  }
+}

@@ -13,6 +13,7 @@ import { queueSupportEmail } from '../../lib/supportEmailCloud'
 import { useSupportStore } from '../../lib/supportStore'
 import { beginSupportAttachmentUpload, normalizeSupportAttachment, openSupportAttachment, queueSupportAttachments, validateSupportAttachments, type SupportAttachment } from '../../lib/supportAttachmentStore'
 import './SupportDesk.css'
+import '../../sidebarStandard.css'
 
 type TicketKind = 'Incident' | 'Service request' | 'Access request'
 type TicketStatus = 'Open' | 'In progress' | 'Awaiting approval' | 'Awaiting employee' | 'Resolved'
@@ -111,6 +112,7 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
   const initialRating = Math.min(5, Math.max(0, Number(new URLSearchParams(window.location.search).get('stars') || 0)))
   const [view, setView] = useState<'home' | 'tickets' | 'assets' | 'catalog' | 'knowledge' | 'service' | 'governance' | 'analytics' | 'admin' | 'email' | 'rating'>(ratingToken ? 'rating' : 'home')
   const [showForm, setShowForm] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('glassco.workspace.sidebar-collapsed.v1') === 'true')
   const [selectedTicketId, setSelectedTicketId] = useState('')
   const [tickets, setTickets, ticketCloud] = useSupportStore<Ticket>('supportTickets', identityEmail, isServiceAgent)
   const [slaPolicy] = useLocalStore<SlaPolicy>('connect.support-sla-policy.v1', defaultSlaPolicy)
@@ -452,12 +454,12 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
   return <div className="support-app">
     {notice&&<div className={`support-toast ${notice.tone}`} role="status"><Icon name={notice.tone==='success'?'assurance':'bell'} size={19}/><span>{notice.message}</span><button type="button" aria-label="Dismiss notification" onClick={()=>setNotice(null)}>×</button></div>}
     <header className="support-topbar">
-      <div className="support-brand"><img src="https://glasscolabs.com/wp-content/uploads/2024/03/Glassco-logo.jpg" alt="Glassco — A Glass Apart"/><span>CONNECT · IT SUPPORT DESK</span></div>
+      <div className="support-brand"><img src="/brand/glassco-logo-transparent.png" alt="Glassco — A Glass Apart"/><span>CONNECT · IT SUPPORT DESK</span></div>
       <div className="support-top-actions"><button type="button" onClick={onExit}>All applications</button><span>{identityEmail}</span></div>
     </header>
-    <div className="support-layout">
-      <aside className="support-sidebar"><span className="support-nav-label">Employee portal</span><nav>
-        {([['home','dashboard','Home'],['tickets','support','My tickets'],['assets','laptop','My IT assets'],['catalog','requests','Service catalogue'],['knowledge','requests','Help articles'],...(isServiceAgent ? [['service','service','Service workspace'],['governance','assurance','SLA & notifications'],...(canViewManagementAnalytics ? [['analytics','reports','Reports & analytics']] : []),['email','mail','Email channel'],['admin','masters','Administration']] : [])] as [typeof view, IconName, string][]).map(([id, icon, label]) => <button type="button" className={view === id ? 'active' : ''} key={id} onClick={() => navigateSupport(id)}><Icon name={icon} size={19}/>{label}</button>)}
+    <div className={`support-layout ${sidebarCollapsed?'sidebar-collapsed':''}`}>
+      <aside className={`support-sidebar ${sidebarCollapsed?'collapsed':''}`}><div className="support-sidebar-heading"><span className="support-nav-label">Employee portal</span><button type="button" className="support-sidebar-collapse" onClick={()=>setSidebarCollapsed(current=>{const next=!current;localStorage.setItem('glassco.workspace.sidebar-collapsed.v1',String(next));return next})} aria-label={sidebarCollapsed?'Expand navigation':'Collapse navigation'} title={sidebarCollapsed?'Expand navigation':'Collapse navigation'}><Icon name="chevron" size={17}/></button></div><nav>
+        {([['home','dashboard','Home'],['tickets','support','My tickets'],['assets','laptop','My IT assets'],['catalog','requests','Service catalogue'],['knowledge','requests','Help articles'],...(isServiceAgent ? [['service','service','Service workspace'],['governance','assurance','SLA & notifications'],...(canViewManagementAnalytics ? [['analytics','reports','Reports & analytics']] : []),['email','mail','Email channel'],['admin','masters','Administration']] : [])] as [typeof view, IconName, string][]).map(([id, icon, label]) => <button type="button" className={view === id ? 'active' : ''} key={id} onClick={() => navigateSupport(id)} title={sidebarCollapsed?label:undefined}><Icon name={icon} size={19}/><span className="support-nav-text">{label}</span></button>)}
       </nav><div className="support-sidebar-foot"><strong>Employee self-service</strong><span>Integrated with ITMS identity and custody</span></div></aside>
       <main className="support-main">
         {showForm ? <section className="support-ticket-form-page"><div className="support-page-heading"><div><span>NEW SUPPORT CASE</span><h1>Raise a support ticket</h1><p>Tell IT what you need. A controlled ticket number will be generated automatically.</p></div><button type="button" onClick={() => setShowForm(false)}>Cancel</button></div>

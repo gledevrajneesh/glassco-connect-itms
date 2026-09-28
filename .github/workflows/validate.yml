@@ -1,0 +1,33 @@
+name: Validate ITMS release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Build and control checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm run test:bulk
+      - run: pnpm run verify:go-live
+
+# Production deployment is deliberately not automated until a short-lived,
+# least-privilege Firebase deployment identity is configured in GitHub. This
+# keeps validation automatic without storing a long-lived credential in source.

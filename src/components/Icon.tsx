@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
 
-export type IconName = 'dashboard' | 'masters' | 'inventory' | 'allocation' | 'maintenance' | 'assurance' | 'reports' | 'history' | 'package' | 'support' | 'requests' | 'service' | 'visitor' | 'laptop' | 'cpu' | 'ram' | 'storage' | 'printer' | 'voip' | 'mobile' | 'monitor' | 'network' | 'chevron' | 'arrow' | 'plus' | 'check' | 'close' | 'bell' | 'mail' | 'menu' | 'empty'
+export type IconName = 'dashboard' | 'search' | 'masters' | 'inventory' | 'allocation' | 'maintenance' | 'assurance' | 'reports' | 'history' | 'package' | 'support' | 'requests' | 'service' | 'visitor' | 'laptop' | 'cpu' | 'ram' | 'storage' | 'printer' | 'voip' | 'mobile' | 'monitor' | 'network' | 'chevron' | 'arrow' | 'plus' | 'check' | 'close' | 'bell' | 'alerts' | 'mail' | 'menu' | 'empty'
 
 const paths: Record<IconName, ReactNode> = {
   dashboard: <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
+  search: <><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></>,
   masters: <><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2"/><path d="M17 5h4M17 9h4M18 13h3"/></>,
   inventory: <><path d="m4 7 8-4 8 4-8 4-8-4Z"/><path d="m4 7 8 4 8-4v10l-8 4-8-4V7Z"/><path d="M12 11v10"/></>,
   allocation: <><circle cx="7" cy="7" r="3"/><path d="M2 18a5 5 0 0 1 10 0"/><path d="M14 8h7m-3-3 3 3-3 3M21 16h-7m3-3-3 3 3 3"/></>,
@@ -31,6 +32,7 @@ const paths: Record<IconName, ReactNode> = {
   check: <><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></>,
   close: <><path d="M6 6l12 12M18 6 6 18"/></>,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></>,
+  alerts: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></>,
   mail: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></>,
   menu: <><path d="M4 6h16M4 12h16M4 18h16"/></>,
   empty: <><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9h8M8 13h5"/></>,
