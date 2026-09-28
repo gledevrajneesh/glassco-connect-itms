@@ -89,6 +89,8 @@ export default function SupportAnalytics({
   const [escalationLevel, setEscalationLevel] = useState<
     "Level 1" | "Level 2" | "Level 3"
   >("Level 1");
+  const [showTicketRegister, setShowTicketRegister] = useState(false);
+  const [ticketRegisterSearch, setTicketRegisterSearch] = useState("");
   const cutoff =
     range === "custom" && fromDate
       ? new Date(`${fromDate}T00:00:00`).getTime()
@@ -103,6 +105,13 @@ export default function SupportAnalytics({
   };
   const rangedTickets = tickets.filter((t) => inRange(t.createdAt));
   const rangedRequests = requests.filter((r) => inRange(r.createdAt));
+  const visibleRegisterTickets = useMemo(() => {
+    const query = ticketRegisterSearch.trim().toLowerCase();
+    return rangedTickets
+      .filter((ticket) => !query || `${ticket.code} ${ticket.title} ${ticket.category} ${ticket.assignee || ""} ${ticket.status}`.toLowerCase().includes(query))
+      .slice()
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }, [rangedTickets, ticketRegisterSearch]);
   const open = rangedTickets.filter((t) => t.status !== "Resolved");
   const breached = open.filter(
     (t) => new Date(t.resolutionDueAt).getTime() < Date.now(),
@@ -737,7 +746,7 @@ export default function SupportAnalytics({
         tickets={tickets}
         onOpenTicket={onOpenTicket}
       />
-      <section className="support-panel analytics-report-table">
+      {showTicketRegister ? <section className="support-panel analytics-report-table">
         <header>
           <div>
             <h2>IT Support ticket register</h2>
@@ -746,9 +755,7 @@ export default function SupportAnalytics({
               Use this table for operational review or download the KPI report.
             </small>
           </div>
-          <button type="button" onClick={exportReport}>
-            Export CSV
-          </button>
+          <div className="analytics-register-actions"><label>Search register<input value={ticketRegisterSearch} onChange={(event) => setTicketRegisterSearch(event.target.value)} placeholder="Ticket number, title, owner or status"/></label><button type="button" onClick={exportReport}>Export CSV</button><button type="button" className="analytics-secondary-action" onClick={() => setShowTicketRegister(false)}>Close register</button></div>
         </header>
         <div className="analytics-table-scroll">
           <div className="analytics-table-head">
@@ -761,10 +768,7 @@ export default function SupportAnalytics({
             <span>Resolution due</span>
             <span>SLA</span>
           </div>
-          {rangedTickets
-            .slice()
-            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-            .map((ticket) => (
+          {visibleRegisterTickets.map((ticket) => (
               <button
                 type="button"
                 className="analytics-table-row"
@@ -800,11 +804,11 @@ export default function SupportAnalytics({
                 </b>
               </button>
             ))}
-          {!rangedTickets.length && (
-            <p>No support tickets were raised in this period.</p>
+          {!visibleRegisterTickets.length && (
+            <p>{rangedTickets.length ? "No support tickets match this search." : "No support tickets were raised in this period."}</p>
           )}
         </div>
-      </section>
+      </section> : <section className="support-panel analytics-register-launcher"><div><span>DETAILED REGISTER</span><h2>IT Support ticket register</h2><p>{rangedTickets.length} tickets are available for the selected reporting period. Open it only when you need operational detail, ticket lookup, or export.</p></div><button className="support-primary" type="button" onClick={() => setShowTicketRegister(true)}>Open ticket register</button></section>}
       {drill && (
         <section className="support-panel analytics-drill">
           <header>
