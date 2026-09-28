@@ -5,19 +5,22 @@ export function useLocalStore<T>(key: string, initialValue: T) {
   const isArrayStore = Array.isArray(initialValue)
   const isSharedValue = isSharedValueStoreKey(key)
   const isCloudManagedStore = (isArrayStore && isOperationalStoreKey(key)) || isSharedValue
+  const legacyBrowserSeed = useRef<T | undefined>(undefined)
+  if (legacyBrowserSeed.current === undefined) {
+    try {
+      const stored = window.localStorage.getItem(key)
+      legacyBrowserSeed.current = stored ? (JSON.parse(stored) as T) : initialValue
+    } catch {
+      legacyBrowserSeed.current = initialValue
+    }
+  }
   const [value, setValue] = useState<T>(() => {
     // Once a business store is cloud-managed, Firestore is its source of truth.
     // Do not briefly render a stale browser copy while the subscription connects.
     if (isCloudManagedStore && cloudOperationalReady()) return initialValue
-    try {
-      const stored = window.localStorage.getItem(key)
-      return stored ? (JSON.parse(stored) as T) : initialValue
-    } catch {
-      return initialValue
-    }
+    return legacyBrowserSeed.current as T
   })
   const [cloudEpoch, setCloudEpoch] = useState(0)
-  const cloudSeed = useRef(initialValue)
   const cloudActive = useRef(false)
   const lastCloudValue = useRef('')
 
@@ -38,8 +41,8 @@ export function useLocalStore<T>(key: string, initialValue: T) {
       setValue(records as T)
     }
     const connect = isSharedValue
-      ? subscribeSharedValueStore(key, receive, cloudSeed.current)
-      : subscribeOperationalStore<unknown>(key, receive, Array.isArray(cloudSeed.current) ? cloudSeed.current as Record<string, unknown>[] : [])
+      ? subscribeSharedValueStore(key, receive, legacyBrowserSeed.current as T)
+      : subscribeOperationalStore<unknown>(key, receive, Array.isArray(legacyBrowserSeed.current) ? legacyBrowserSeed.current as Record<string, unknown>[] : [])
     void connect.then((stop) => { if (cancelled) stop(); else unsubscribe = stop }).catch((error) => {
       window.dispatchEvent(new CustomEvent('itms-cloud-error', { detail: error instanceof Error ? error.message : 'Cloud synchronization failed' }))
     })

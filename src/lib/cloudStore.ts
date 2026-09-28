@@ -24,6 +24,7 @@ export const operationalStoreRegistry = {
 export const sharedValueStoreRegistry = {
   'connect.support-sla-policy.v1': 'supportSlaPolicy',
   'connect.support-email-config.v1': 'supportEmailConfiguration',
+  'connect.support-operations.v1': 'supportOperations',
   'connect.backup-schedule.v1': 'backupSchedule',
   'connect.application-availability.v1': 'applicationAvailability',
   'connect.ncr-master-data.v1': 'ncrMasterData',

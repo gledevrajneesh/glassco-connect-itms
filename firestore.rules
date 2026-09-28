@@ -140,12 +140,12 @@ service cloud.firestore {
     }
 
     match /operationalValues/{valueId} {
-      allow read: if (valueId in ['supportSlaPolicy', 'supportEmailConfiguration'] && hasApp('support'))
+      allow read: if (valueId in ['supportSlaPolicy', 'supportEmailConfiguration', 'supportOperations'] && hasApp('support'))
         || (valueId == 'backupSchedule' && operationalReader())
         || (valueId == 'ncrMasterData' && hasApp('requests'));
       allow read: if valueId == 'applicationAvailability' && activeUser();
       allow read: if valueId == 'facilitiesMasterData' && hasApp('facilities');
-      allow create, update: if (valueId in ['supportSlaPolicy', 'supportEmailConfiguration'] && supportAgent())
+      allow create, update: if (valueId in ['supportSlaPolicy', 'supportEmailConfiguration', 'supportOperations'] && supportAgent())
         || (valueId == 'backupSchedule' && operationalEditor());
       allow create, update: if valueId == 'applicationAvailability' && operationalEditor();
       allow create, update: if valueId == 'ncrMasterData' && operationalEditor();
