@@ -556,7 +556,7 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
     return `${hours}h remaining`
   }
 
-  if (!ticketCloud.ready) return <main className="support-panel"><h1>Connecting to Support Desk</h1><p>{ticketCloud.error || 'Loading your authorised tickets…'}</p><button onClick={onExit}>Back to applications</button></main>
+  if (!ticketCloud.ready) return <main className="support-connection-screen"><section className="support-connection-card"><div className="support-connection-mark" aria-hidden="true"><i/><i/><i/></div><div><span>SECURE SUPPORT SESSION</span><h1>Connecting to Support Desk</h1><p>{ticketCloud.error || 'Loading your authorised tickets…'}</p><div className="support-connection-progress" aria-hidden="true"><i/></div></div><button type="button" onClick={onExit}>Back to applications</button></section></main>
   return <div className="support-app">
     {notice&&<div className={`support-toast ${notice.tone}`} role="status"><Icon name={notice.tone==='success'?'assurance':'bell'} size={19}/><span>{notice.message}</span><button type="button" aria-label="Dismiss notification" onClick={()=>setNotice(null)}>×</button></div>}
     <header className="support-topbar">
