@@ -390,7 +390,9 @@ service cloud.firestore {
     }
 
     match /supportInboundMessages/{messageId} {
-      allow read: if operationalReader();
+      allow read: if supportAgent()
+        || (resource.data.ticketId is string
+          && ownsTicket(get(/databases/$(database)/documents/supportTickets/$(resource.data.ticketId)).data));
       allow write: if false;
     }
 
@@ -454,7 +456,9 @@ service cloud.firestore {
     }
 
     match /supportMailQueue/{mailId} {
-      allow read: if operationalReader();
+      allow read: if supportAgent()
+        || (resource.data.ticketId is string
+          && ownsTicket(get(/databases/$(database)/documents/supportTickets/$(resource.data.ticketId)).data));
       allow create: if request.resource.data.status == 'Queued'
         && ((hasApp('requests') && request.resource.data.event == 'Purchase request submitted'
           && get(/databases/$(database)/documents/ncrRequests/$(request.resource.data.ticketId)).data.requesterEmail == email()

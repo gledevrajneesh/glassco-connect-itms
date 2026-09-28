@@ -12,6 +12,8 @@ import EmailTicketing, { type RatingInvite } from './EmailTicketing'
 import { queueSupportEmail } from '../../lib/supportEmailCloud'
 import { useSupportStore } from '../../lib/supportStore'
 import { beginSupportAttachmentUpload, normalizeSupportAttachment, openSupportAttachment, queueSupportAttachments, validateSupportAttachments, type SupportAttachment } from '../../lib/supportAttachmentStore'
+import { collection, onSnapshot, query, where } from 'firebase/firestore'
+import { firestore } from '../../lib/firebase'
 import './SupportDesk.css'
 import '../../sidebarStandard.css'
 
@@ -52,6 +54,7 @@ type Ticket = {
   history: { at: string; event: string; actor: string }[]
   source?: 'Portal' | 'Email'
 }
+type EmailTrailRow = { id: string; direction: 'Inbound' | 'Outbound'; subject: string; participant: string; body?: string; status: string; at: string; event?: string }
 
 type User = { id: string; code?: string; name: string; email: string; departmentId?: string; active?: boolean }
 type Asset = { id: string; assetId?: string; assetCode?: string; typeId?: string; modelId?: string; serial?: string; serialNumber?: string; status?: string; stockStatus?: string; assignedUserId?: string }
@@ -109,6 +112,10 @@ function AttachmentList({ attachments, onOpen, onPreview }: { attachments: Array
       {canPreview && <button type="button" className="support-attachment-preview" onClick={() => onPreview(attachment)}>Preview</button>}
     </div>
   })}</div>
+}
+
+function TicketEmailTrail({ rows }: { rows: EmailTrailRow[] }) {
+  return <section className="support-ticket-email-trail"><header><div><span>CONTROLLED EMAIL TRAIL</span><h3>Email activity on this ticket</h3><p>Inbound Gmail replies and outbound service notifications are retained against this ticket reference.</p></div><strong>{rows.length}</strong></header>{rows.length ? <div>{rows.map(row => <article key={row.id}><i className={row.direction.toLowerCase()}>{row.direction === 'Inbound' ? '↓' : '↑'}</i><div><strong>{row.subject || row.event || 'Support email update'}</strong><p>{row.body || 'No message preview recorded.'}</p><small>{row.direction === 'Inbound' ? `From ${row.participant}` : `To ${row.participant}`} · {formatDate(row.at)}</small></div><b className={row.status.toLowerCase().replaceAll(' ','-')}>{row.status}</b></article>)}</div> : <p className="support-email-trail-empty">No email activity is recorded for this ticket yet.</p>}</section>
 }
 
 export default function SupportDesk({ identityEmail, identityName, isServiceAgent, canViewManagementAnalytics, onOpenItms, onExit }: { identityEmail: string; identityName: string; isServiceAgent: boolean; canViewManagementAnalytics: boolean; onOpenItms: (target: ModuleName, focus?: string) => void; onExit: () => void }) {
@@ -176,6 +183,7 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
   const [bulkAssignee, setBulkAssignee] = useState('')
   const [bulkStatus, setBulkStatus] = useState<'Keep current' | 'Open' | 'In progress' | 'Awaiting approval'>('Keep current')
   const [bulkPriority, setBulkPriority] = useState<'Keep current' | Ticket['priority']>('Keep current')
+  const [emailTrail, setEmailTrail] = useState<EmailTrailRow[]>([])
   const navigateSupport = (next: typeof view) => {
     // The ticket composer is a temporary overlay. It must never remain mounted
     // above the destination screen after sidebar navigation.
@@ -238,6 +246,27 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
     const timer = window.setInterval(updatePresence, 45000)
     return () => window.clearInterval(timer)
   }, [identityEmail, identityName, isServiceAgent, selectedTicketId, setTickets])
+  useEffect(() => {
+    if (!firestore || !selectedTicketId) { setEmailTrail([]); return }
+    let outbound: EmailTrailRow[] = [], inbound: EmailTrailRow[] = []
+    const publish = () => setEmailTrail([...outbound, ...inbound].sort((left, right) => right.at.localeCompare(left.at)))
+    const stopOutbound = onSnapshot(query(collection(firestore, 'supportMailQueue'), where('ticketId', '==', selectedTicketId)), snapshot => {
+      outbound = snapshot.docs.map(entry => {
+        const row = entry.data() as Record<string, unknown>
+        let payload: Record<string, string> = {}
+        try { payload = JSON.parse(String(row.payload || '{}')) as Record<string, string> } catch { /* retained queue row without a payload preview */ }
+        return { id: `out-${entry.id}`, direction: 'Outbound', subject: payload.subject || String(row.event || 'Service notification'), participant: String(row.recipient || payload.to || ''), body: payload.body || '', status: String(row.status || 'Queued'), at: String(row.sentAt || row.lastAttemptAt || row.failedAt || row.createdAt || ''), event: String(row.event || '') }
+      }); publish()
+    }, () => { outbound = []; publish() })
+    const stopInbound = onSnapshot(query(collection(firestore, 'supportInboundMessages'), where('ticketId', '==', selectedTicketId)), snapshot => {
+      inbound = snapshot.docs.map(entry => {
+        const row = entry.data() as Record<string, unknown>
+        const message = selectedTicket?.messages?.find(item => item.id === String(row.messageId || entry.id))
+        return { id: `in-${entry.id}`, direction: 'Inbound', subject: String(row.subject || 'Email reply'), participant: String(row.from || ''), body: message?.body || '', status: String(row.status || 'Processed'), at: String(row.processedAt || ''), event: 'Email reply' }
+      }); publish()
+    }, () => { inbound = []; publish() })
+    return () => { stopOutbound(); stopInbound() }
+  }, [selectedTicketId, selectedTicket?.messages])
   useEffect(() => {
     if (!notice) return
     const timer = window.setTimeout(() => setNotice(null), notice.tone === 'error' ? 7000 : 4000)
@@ -597,6 +626,7 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
           <div className="support-saved-views"><span>Saved views</span>{(['All','My queue','Unassigned','Breached','Awaiting employee','Critical'] as const).map(item=><button type="button" className={queueView===item?'active':''} key={item} onClick={()=>setQueueView(item)}>{item}</button>)}</div><div className="support-queue-filters"><label>Search<input value={queueSearch} onChange={event=>setQueueSearch(event.target.value)} placeholder="Code, employee, category or assignee"/></label><label>Status<select value={queueStatus} onChange={event=>setQueueStatus(event.target.value)}>{['All','Open','In progress','Awaiting approval','Awaiting employee','Resolved','Closed'].map(value=><option key={value}>{value}</option>)}</select></label><label>Priority<select value={queuePriority} onChange={event=>setQueuePriority(event.target.value)}>{['All','Critical','High','Medium','Low'].map(value=><option key={value}>{value}</option>)}</select></label></div>
           <section className="support-bulk-toolbar" aria-label="Bulk ticket updates"><div><strong>{selectedQueueTickets.length} selected</strong><button type="button" onClick={()=>setBulkSelection(bulkSelection.length===queueTickets.length?[]:queueTickets.map(ticket=>ticket.id))}>{bulkSelection.length===queueTickets.length&&queueTickets.length?'Clear visible':'Select visible'}</button></div><label>Assign<select value={bulkAssignee} onChange={event=>setBulkAssignee(event.target.value)}><option value="">Keep current</option><option>IT Service Desk</option><option>IT Asset Manager</option><option>IT Head</option></select></label><label>Status<select value={bulkStatus} onChange={event=>setBulkStatus(event.target.value as typeof bulkStatus)}><option>Keep current</option><option>Open</option><option>In progress</option><option>Awaiting approval</option></select></label><label>Priority<select value={bulkPriority} onChange={event=>setBulkPriority(event.target.value as typeof bulkPriority)}><option>Keep current</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option></select></label><button className="support-primary" type="button" onClick={()=>void applyBulkUpdate()}>Apply update</button></section>
           {selectedTicket&&<section className="support-agent-productivity"><div><strong>{selectedTicket.code} · Agent tools</strong><small>Category-aware replies are inserted into the employee response box below.</small></div>{otherActiveViewers.length>0&&<p className="support-collaboration-alert"><strong>Also viewing:</strong> {otherActiveViewers.map(viewer=>viewer.name||viewer.email).join(', ')}. Coordinate before making overlapping changes.</p>}<div className="support-response-templates"><span>Suggested replies</span>{responseTemplates.map(template=><button type="button" key={template} onClick={()=>setReplyText(template)}>{template}</button>)}</div></section>}
+          {selectedTicket&&<TicketEmailTrail rows={emailTrail}/>} 
           {selectedTicket?.assetId&&<section className="support-replacement-strip"><div><strong>Asset replacement</strong><span>Create a controlled replacement request against {assetLabel(assets.find(asset=>asset.id===selectedTicket.assetId) as Asset)}.</span></div><button type="button" onClick={()=>setIntegrationMode(integrationMode==='Replacement'?'':'Replacement')}>Request replacement</button></section>}
           {integrationMode==='Replacement'&&selectedTicket?.assetId&&<div className="support-integration-form support-replacement-form"><label>Replacement asset<select value={replacementAssetId} onChange={event=>setReplacementAssetId(event.target.value)}><option value="">Select available asset</option>{assets.filter(asset=>asset.id!==selectedTicket.assetId&&['In stock','Available'].includes(asset.stockStatus||asset.status||'')&&(!assets.find(item=>item.id===selectedTicket.assetId)?.typeId||asset.typeId===assets.find(item=>item.id===selectedTicket.assetId)?.typeId)).map(asset=><option value={asset.id} key={asset.id}>{assetLabel(asset)}</option>)}</select></label><label className="full">Replacement reason<textarea value={integrationNotes} onChange={event=>setIntegrationNotes(event.target.value)} placeholder="Diagnosis, business impact and reason replacement is required"/></label><button className="support-primary" type="button" onClick={()=>requestReplacement(selectedTicket)}>Submit for dual approval</button></div>}
           {serviceMode==='board'&&<div className="support-kanban">{(['Open','In progress','Awaiting approval','Awaiting employee','Resolved','Closed'] as TicketStatus[]).map(status=><section key={status} onDragOver={event=>event.preventDefault()} onDrop={event=>{const ticket=tickets.find(item=>item.id===event.dataTransfer.getData('text/ticket'));if(ticket&&status!=='Closed')changeTicketStatus(ticket,status)}}><header><strong>{status}</strong><span>{queueTickets.filter(ticket=>ticket.status===status).length}</span></header>{queueTickets.filter(ticket=>ticket.status===status).map(ticket=><button type="button" draggable={ticket.status!=='Closed'} key={ticket.id} onDragStart={event=>event.dataTransfer.setData('text/ticket',ticket.id)} onClick={()=>setSelectedTicketId(ticket.id)}><strong>{ticket.code}</strong><span>{ticket.title}</span><small>{ticket.priority} · {ticket.assignee||'Unassigned'}</small></button>)}</section>)}</div>}
