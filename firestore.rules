@@ -257,7 +257,7 @@ service cloud.firestore {
         && request.resource.data.id == resource.data.id
         && request.resource.data.code == resource.data.code
         && (supportAgent() || (ownsTicket(resource.data) && (employeeReply()
-          || (resource.data.status == 'Resolved' && request.resource.data.status == 'Open'
+          || (resource.data.status in ['Resolved', 'Closed'] && request.resource.data.status == 'Open'
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','resolutionSummary','updatedAt','history'])))));
       allow delete: if false;
     }

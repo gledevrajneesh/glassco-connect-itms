@@ -4,7 +4,10 @@ const CONFIG = {
   mailbox: 'dev@glasscolabs.com',
   authorisedDomain: 'glasscolabs.com',
   processedLabel: 'ITMS-Processed',
-  inboxQuery: 'to:itsupport@glasscolabs.com -label:ITMS-Processed newer_than:30d',
+  // Every message is deduplicated in Firestore, so threads remain eligible when
+  // an employee sends a later reply.  A Gmail label alone must never suppress a
+  // new message on an existing support conversation.
+  inboxQuery: 'to:itsupport@glasscolabs.com newer_than:30d',
   appUrl: 'https://glassco-connect-itms-dev.web.app/',
   supportAttachmentFolderName: 'Glassco CONNECT - Support Desk Attachments',
   supportViewerProperty: 'SUPPORT_ATTACHMENT_VIEWERS',
@@ -31,6 +34,8 @@ function runMailboxBridge() {
     processPortalAttachmentIntakes_();
     processInventoryAttachmentIntakes_();
     processInboundMessages_();
+    processTicketLifecycle_();
+    processSlaEscalations_();
     processOutboundQueue_();
     const completedAt = new Date().toISOString();
     PropertiesService.getScriptProperties().setProperty('LAST_SUCCESS_AT', completedAt);
@@ -64,15 +69,32 @@ function processInboundMessages_() {
         firestorePut_('supportInboundMessages', messageId, { messageId, from, status: 'Rejected domain', processedAt: new Date().toISOString() });
         return;
       }
-      const ticketCode = nextTicketCode_();
       const now = new Date();
+      const nowIso = now.toISOString();
+      const existingTicket = findTicketForEmail_(message, thread);
+      if (existingTicket) {
+        const attachments = copyEmailAttachments_(message, existingTicket.id, existingTicket.code, messageId, from, nowIso);
+        const priorMessages = Array.isArray(existingTicket.messages) ? existingTicket.messages : [];
+        const priorHistory = Array.isArray(existingTicket.history) ? existingTicket.history : [];
+        const body = cleanInboundEmailBody_(message.getPlainBody());
+        const attachmentEvent = attachments.length ? ` · ${attachments.length} attachment${attachments.length === 1 ? '' : 's'} received` : '';
+        firestorePatch_('supportTickets', existingTicket.id, {
+          messages: priorMessages.concat([{ id: messageId, at: nowIso, author: from, visibility: 'employee', body: body }]),
+          attachments: (Array.isArray(existingTicket.attachments) ? existingTicket.attachments : []).concat(attachments),
+          updatedAt: nowIso,
+          history: priorHistory.concat([{ at: nowIso, event: 'Email reply added to existing ticket' + attachmentEvent, actor: from }])
+        });
+        firestorePut_('supportInboundMessages', messageId, { messageId, ticketId: existingTicket.id, ticketCode: existingTicket.code, from, subject: message.getSubject(), attachmentMetadata: JSON.stringify(attachments), status: 'Appended to existing ticket', processedAt: nowIso });
+        return;
+      }
+      const ticketCode = nextTicketCode_();
       const ticketId = Utilities.getUuid();
-      const attachments = copyEmailAttachments_(message, ticketId, ticketCode, messageId, from, now.toISOString());
+      const attachments = copyEmailAttachments_(message, ticketId, ticketCode, messageId, from, nowIso);
       const availableAttachments = attachments.filter(a => !a.unavailable && a.availability !== 'Rejected').length;
       const mailboxOnlyAttachments = attachments.length - availableAttachments;
       const attachmentEvent = attachments.length ? ` · ${availableAttachments} attachment${availableAttachments === 1 ? '' : 's'} shared to Support Desk${mailboxOnlyAttachments ? ` · ${mailboxOnlyAttachments} retained in the IT Support mailbox` : ''}` : '';
-      const ticket = { id: ticketId, code: ticketCode, kind: 'Incident', category: 'Email & applications', subcategory: 'Email-raised request', title: message.getSubject() || 'Email support request', description: message.getPlainBody(), priority: 'Low', impact: 'Individual', urgency: 'Normal', status: 'Open', requesterEmail: from, requesterName: from.split('@')[0], assignee: 'IT Service Desk', firstResponseDueAt: new Date(now.getTime() + 4 * 3600000).toISOString(), resolutionDueAt: new Date(now.getTime() + 24 * 3600000).toISOString(), messages: [], attachments: attachments, createdAt: now.toISOString(), updatedAt: now.toISOString(), source: 'Email', history: [{ at: now.toISOString(), event: 'Created from Gmail and automatically routed to IT Service Desk' + attachmentEvent, actor: CONFIG.alias }] };
-      firestorePut_('supportEmailTickets', ticketId, { payload: JSON.stringify(ticket), messageId, createdAt: now.toISOString() });
+      const ticket = { id: ticketId, code: ticketCode, kind: 'Incident', category: 'Email & applications', subcategory: 'Email-raised request', title: message.getSubject() || 'Email support request', description: cleanInboundEmailBody_(message.getPlainBody()), priority: 'Low', impact: 'Individual', urgency: 'Normal', status: 'Open', requesterEmail: from, requesterName: from.split('@')[0], assignee: 'IT Service Desk', firstResponseDueAt: new Date(now.getTime() + 4 * 3600000).toISOString(), resolutionDueAt: new Date(now.getTime() + 24 * 3600000).toISOString(), messages: [], attachments: attachments, createdAt: nowIso, updatedAt: nowIso, source: 'Email', history: [{ at: nowIso, event: 'Created from Gmail and automatically routed to IT Service Desk' + attachmentEvent, actor: CONFIG.alias }] };
+      firestorePut_('supportEmailTickets', ticketId, { payload: JSON.stringify(ticket), messageId, createdAt: nowIso });
       firestorePut_('supportTickets', ticketId, ticket);
       firestorePut_('supportInboundMessages', messageId, { messageId, ticketId, ticketCode, from, subject: message.getSubject(), attachmentMetadata: JSON.stringify(attachments), status: 'Processed', processedAt: now.toISOString() });
       const acknowledgement = 'Your IT support request has been recorded as ' + ticketCode + '.\n\nOur service desk will review it and keep you informed by email. Please retain the ticket number in future correspondence.';
@@ -80,6 +102,62 @@ function processInboundMessages_() {
     });
     thread.addLabel(label);
   });
+}
+
+function cleanInboundEmailBody_(body) {
+  return String(body || '').replace(/\nOn .*[\s\S]*$/i, '').replace(/\nFrom:.*[\s\S]*$/i, '').trim().slice(0, 10000) || 'Email reply received.';
+}
+
+function ticketCodeFromMessage_(message, thread) {
+  const text = [message.getSubject(), message.getPlainBody(), thread.getFirstMessageSubject()].join(' ');
+  const match = text.match(/\b(?:INC|ACC|REQ)-\d{4}-(?:\d{4}|P[A-Z0-9]+)\b/i);
+  return match ? match[0].toUpperCase() : '';
+}
+
+function findTicketForEmail_(message, thread) {
+  const ticketCode = ticketCodeFromMessage_(message, thread);
+  if (!ticketCode) return null;
+  const row = firestoreList_('supportTickets').map(doc => decodeFields_(doc.fields || {})).find(ticket => String(ticket.code || '').toUpperCase() === ticketCode);
+  return row || null;
+}
+
+function processTicketLifecycle_() {
+  const closeAfterDays = Number(PropertiesService.getScriptProperties().getProperty('SUPPORT_AUTO_CLOSE_DAYS') || 7);
+  const cutoff = Date.now() - closeAfterDays * 24 * 60 * 60 * 1000;
+  firestoreList_('supportTickets').map(doc => decodeFields_(doc.fields || {})).forEach(ticket => {
+    if (ticket.status !== 'Resolved') return;
+    const resolvedAt = Date.parse(ticket.resolvedAt || ticket.updatedAt || ticket.createdAt || '');
+    if (!resolvedAt || resolvedAt > cutoff) return;
+    const now = new Date().toISOString();
+    const history = Array.isArray(ticket.history) ? ticket.history : [];
+    firestorePatch_('supportTickets', ticket.id, { status: 'Closed', closedAt: now, updatedAt: now, history: history.concat([{ at: now, event: `Automatically closed after ${closeAfterDays} days without a reopen request`, actor: 'Glassco Support lifecycle' }]) });
+    queueLifecycleEmail_(ticket, 'Ticket auto-closed', `[${ticket.code}] Closed after resolution`, `Your IT support request ${ticket.code} was automatically closed after ${closeAfterDays} days. You can reopen it from Glassco Support Desk if the issue returns.`);
+  });
+}
+
+function processSlaEscalations_() {
+  const now = Date.now();
+  firestoreList_('supportTickets').map(doc => decodeFields_(doc.fields || {})).forEach(ticket => {
+    if (!ticket.id || ['Resolved', 'Closed'].indexOf(ticket.status) >= 0) return;
+    const dueAt = Date.parse(ticket.resolutionDueAt || '');
+    if (!dueAt) return;
+    const event = dueAt <= now ? 'SLA breached' : (dueAt - now <= 4 * 60 * 60 * 1000 ? 'SLA reminder' : '');
+    if (!event) return;
+    const eventId = `${ticket.id}-${event.replace(/[^a-z]+/ig, '-').toLowerCase()}`;
+    if (firestoreGet_('supportSlaEvents', eventId)) return;
+    const createdAt = new Date().toISOString();
+    firestorePut_('supportSlaEvents', eventId, { id: eventId, ticketId: ticket.id, ticketCode: ticket.code, event, createdAt, dueAt: ticket.resolutionDueAt, assignee: ticket.assignee || 'Unassigned', status: 'Queued' });
+    const recipient = ticket.assignee || 'IT Service Desk';
+    queueLifecycleEmail_(ticket, event, `[${ticket.code}] ${event}`, `${event} for ${ticket.code}. Resolution target: ${ticket.resolutionDueAt}. Current owner: ${recipient}.`);
+    const history = Array.isArray(ticket.history) ? ticket.history : [];
+    firestorePatch_('supportTickets', ticket.id, { updatedAt: createdAt, history: history.concat([{ at: createdAt, event: `${event} notification queued`, actor: 'Glassco Support SLA monitor' }]) });
+  });
+}
+
+function queueLifecycleEmail_(ticket, event, subject, body) {
+  const id = Utilities.getUuid();
+  const payload = { to: ticket.requesterEmail, subject, body, event, ticketCode: ticket.code };
+  firestorePut_('supportMailQueue', id, { id, ticketId: ticket.id, ticketCode: ticket.code, recipient: ticket.requesterEmail, event, status: 'Queued', attempts: 0, createdAt: new Date().toISOString(), payload: JSON.stringify(payload) });
 }
 
 function copyEmailAttachments_(message, ticketId, ticketCode, messageId, sender, uploadedAt) {

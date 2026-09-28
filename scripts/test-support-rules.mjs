@@ -135,6 +135,8 @@ try {
   await env.withSecurityRulesDisabled(context=>setDoc(doc(context.firestore(),'supportRatings','expired'),{...invite,id:'expired',token:'expired',expiresAtMs:Date.now()-1000}))
   await check('expired rating rejected',()=>assertFails(updateDoc(doc(a,'supportRatings','expired'),answer)))
   await check('agent can read rating results',()=>assertSucceeds(getDocs(collection(m,'supportRatings'))))
+  await env.withSecurityRulesDisabled(context=>updateDoc(doc(context.firestore(),'supportTickets','a'),{status:'Closed'}))
+  await check('employee can reopen a closed ticket',()=>assertSucceeds(updateDoc(doc(a,'supportTickets','a'),{status:'Open',resolutionSummary:'',updatedAt:'2026-09-03T02:00:00Z',history:[]})))
   const ncr={id:'ncr-a',code:'NCR-TEST-A',requesterEmail:alice,requesterName:'Alice',approverEmail:manager,departmentId:'it',departmentName:'IT',state:'Submitted',items:[{id:'line-a',description:'Printer toner',quantity:2,uom:'Nos'}],history:[],createdAt:'2026-09-14T00:00:00Z',updatedAt:'2026-09-14T00:00:00Z'}
   await check('requester can create own NCR request',()=>assertSucceeds(setDoc(doc(a,'ncrRequests','ncr-a'),ncr)))
   await check('requester can query own NCR requests',()=>assertSucceeds(getDocs(query(collection(a,'ncrRequests'),where('requesterEmail','==',alice)))))
