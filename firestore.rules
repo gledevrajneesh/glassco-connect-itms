@@ -353,6 +353,12 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Shared internal channel for the IT support team. Employee identities never have access.
+    match /supportTeamChannels/{messageId} {
+      allow read, create: if supportAgent();
+      allow update, delete: if false;
+    }
+
     match /supportRequests/{requestId} {
       allow read: if supportAgent() || ownsTicket(resource.data);
       allow create: if ownsTicket(request.resource.data)

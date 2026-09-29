@@ -17,7 +17,7 @@ function mergeEventRows(serverValue: unknown, intendedValue: unknown) {
 }
 
 /** Shared support records. No browser cache is used for confidential ticket data. */
-export function useSupportStore<T extends Row>(name: 'supportTickets' | 'supportRatings' | 'supportRequests', email: string, agent: boolean) {
+export function useSupportStore<T extends Row>(name: 'supportTickets' | 'supportRatings' | 'supportRequests' | 'supportTeamChannels', email: string, agent: boolean) {
   const [rows, setRows] = useState<T[]>([])
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)

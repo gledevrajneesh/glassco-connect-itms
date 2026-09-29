@@ -55,6 +55,7 @@ type Ticket = {
   source?: 'Portal' | 'Email'
 }
 type EmailTrailRow = { id: string; direction: 'Inbound' | 'Outbound'; subject: string; participant: string; body?: string; status: string; at: string; event?: string }
+type TeamMessage = { id: string; requesterEmail: string; channel: 'general'; visibility: 'internal'; at: string; author: string; body: string }
 
 type User = { id: string; code?: string; name: string; email: string; departmentId?: string; active?: boolean }
 type Asset = { id: string; assetId?: string; assetCode?: string; typeId?: string; modelId?: string; serial?: string; serialNumber?: string; status?: string; stockStatus?: string; assignedUserId?: string }
@@ -129,6 +130,7 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
   const [slaPolicy] = useLocalStore<SlaPolicy>('connect.support-sla-policy.v1', defaultSlaPolicy)
   const [, setSupportDeliveries] = useLocalStore<SupportDelivery[]>('connect.support-deliveries.v1', [])
   const [ratingInvites,setRatingInvites, ratingCloud] = useSupportStore<RatingInvite>('supportRatings', identityEmail, isServiceAgent)
+  const [teamMessages, setTeamMessages] = useSupportStore<TeamMessage>('supportTeamChannels', identityEmail, isServiceAgent)
   const [users] = useLocalStore<User[]>('itms.users.v1', [])
   const [assets, setAssets] = useLocalStore<Asset[]>('itms.assets.v1', [])
   const [models] = useLocalStore<Model[]>('itms.asset-models.v1', [])
@@ -176,6 +178,7 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
   const [ratingStars,setRatingStars]=useState(initialRating);const [ratingResolved,setRatingResolved]=useState(true);const [ratingComment,setRatingComment]=useState('')
   const [reopenReason,setReopenReason]=useState('');const [reopenTicketId,setReopenTicketId]=useState('');const [ticketConfirmation,setTicketConfirmation]=useState<{code:string;assignee:string;resolutionDueAt:string} | null>(null)
   const [notice, setNotice] = useState<{ tone: 'success' | 'warning' | 'error'; message: string } | null>(null)
+  useEffect(() => { if (collaborationOpen) setCollaborationTicketId('__general') }, [collaborationOpen])
   const [savingTicket, setSavingTicket] = useState(false)
   const [creatingTicket, setCreatingTicket] = useState(false)
   const [transferringAttachments, setTransferringAttachments] = useState(false)
@@ -499,6 +502,10 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
   }
 
   function claimCollaborationTicket(ticket: Ticket) {
+    if (ticket.id === '__general') {
+      setNotice({ tone: 'warning', message: 'Select an open ticket from the queue before claiming work.' })
+      return
+    }
     if (ticket.assignee && ticket.assignee !== identityName && ticket.assignee !== identityEmail) {
       setNotice({ tone: 'warning', message: `${ticket.code} is already claimed by ${ticket.assignee}.` })
       return
@@ -513,6 +520,11 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
     if (!collaborationMessage.trim()) return
     const now = new Date().toISOString()
     const body = collaborationMessage.trim()
+    if (ticket.id === '__general') {
+      void setTeamMessages(rows => [...rows, { id: crypto.randomUUID(), requesterEmail: 'support-team', channel: 'general', visibility: 'internal', at: now, author: identityName || identityEmail, body }])
+      setCollaborationMessage('')
+      return
+    }
     void setTickets(current => current.map(row => row.id === ticket.id ? { ...row, updatedAt: now, messages: [...(row.messages || []), { id: crypto.randomUUID(), at: now, author: identityName || identityEmail, visibility: 'internal', body }], history: [...row.history, { at: now, event: 'Internal team collaboration message added', actor: identityEmail }] } : row))
     setCollaborationMessage('')
   }
@@ -660,7 +672,8 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
       {previewAttachment && <div className="support-preview-backdrop" role="dialog" aria-modal="true" aria-label={`Preview ${previewAttachment.name}`} onClick={() => setPreviewAttachment(null)}><section className="support-preview" onClick={event => event.stopPropagation()}><header><div><strong>{previewAttachment.name}</strong><small>Secure Drive preview · access is controlled by Google Workspace</small></div><button type="button" onClick={() => setPreviewAttachment(null)}>×</button></header>{previewAttachment.contentType.startsWith('image/') ? <img src={previewAttachment.driveUrl || `https://drive.google.com/uc?export=view&id=${encodeURIComponent(previewAttachment.driveFileId || '')}`} alt={previewAttachment.name}/> : <iframe title={previewAttachment.name} src={previewAttachment.driveUrl || `https://drive.google.com/file/d/${encodeURIComponent(previewAttachment.driveFileId || '')}/preview`}/>}<footer><button type="button" onClick={() => viewAttachment(previewAttachment)}>Open in Google Drive</button></footer></section></div>}
       {collaborationOpen && (() => {
         const openTickets = tickets.filter(ticket => !['Resolved', 'Closed'].includes(ticket.status))
-        const collaborationTicket = openTickets.find(ticket => ticket.id === collaborationTicketId) || openTickets[0]
+        const generalChannel: Ticket = { id: '__general', code: 'GENERAL', kind: 'Incident', category: 'Team channel', subcategory: 'General', title: 'General team channel', description: 'Default private collaboration channel for the support team.', priority: 'Low', impact: 'Individual', urgency: 'Normal', status: 'Open', requesterEmail: 'support-team', requesterName: 'Support team', firstResponseDueAt: '', resolutionDueAt: '', messages: teamMessages, attachments: [], createdAt: '', updatedAt: '', history: [] }
+        const collaborationTicket = collaborationTicketId === '__general' ? generalChannel : openTickets.find(ticket => ticket.id === collaborationTicketId) || generalChannel
         const activeAgents = supportOperations.agents.filter(agent => agent.active)
         const owner = identityName || identityEmail
         return <div className="support-collaboration-backdrop" role="dialog" aria-modal="true" aria-label="Support team collaboration" onClick={() => setCollaborationOpen(false)}><section className="support-collaboration-dialog" onClick={event => event.stopPropagation()}><header><div><span>INTERNAL SUPPORT OPERATIONS</span><h2>Team collaboration</h2><p>Coordinate privately, claim work and keep the employee-facing ticket conversation separate.</p></div><button type="button" aria-label="Close collaboration" onClick={() => setCollaborationOpen(false)}>×</button></header>{!collaborationTicket ? <div className="support-empty">No open tickets are available for team collaboration.</div> : <div className="support-collaboration-grid"><aside className="support-collaboration-tickets"><header><strong>Open tickets</strong><span>{openTickets.length}</span></header><input value={queueSearch} onChange={event => setQueueSearch(event.target.value)} placeholder="Search open tickets" aria-label="Search open tickets"/>{openTickets.filter(ticket => `${ticket.code} ${ticket.title} ${ticket.requesterName}`.toLowerCase().includes(queueSearch.toLowerCase())).map(ticket => <button type="button" className={ticket.id === collaborationTicket.id ? 'selected' : ''} key={ticket.id} onClick={() => { setCollaborationTicketId(ticket.id); setSelectedTicketId(ticket.id) }}><div><strong>{ticket.code}</strong><small>{ticket.title}</small></div><em className={ticket.priority.toLowerCase()}>{ticket.priority}</em><span>{ticket.assignee || 'Unclaimed'}</span></button>)}</aside><main className="support-collaboration-chat"><header><div><span>{collaborationTicket.code}</span><h3>{collaborationTicket.title}</h3><p>{collaborationTicket.category} · {collaborationTicket.requesterName}</p></div><div><em className={slaLabel(collaborationTicket) === 'Breached' ? 'risk' : ''}>SLA: {slaLabel(collaborationTicket)}</em><button className="support-primary" type="button" disabled={Boolean(collaborationTicket.assignee && collaborationTicket.assignee !== owner)} onClick={() => claimCollaborationTicket(collaborationTicket)}>{collaborationTicket.assignee === owner ? 'Claimed by you' : collaborationTicket.assignee ? `Claimed by ${collaborationTicket.assignee}` : 'Claim ticket'}</button></div></header><div className="support-collaboration-messages">{(collaborationTicket.messages || []).filter(message => message.visibility === 'internal').map(message => <article className={message.author === owner ? 'mine' : ''} key={message.id}><strong>{message.author}</strong><p>{message.body}</p><small>{formatDate(message.at)}</small></article>)}{!(collaborationTicket.messages || []).some(message => message.visibility === 'internal') && <div className="support-empty">No internal team messages yet. Start the coordination for this ticket.</div>}</div><footer><div className="support-collaboration-mentions"><span>Tag teammate</span>{activeAgents.filter(agent => agent.name !== owner).map(agent => <button type="button" key={agent.id} onClick={() => setCollaborationMessage(message => `${message}${message && !message.endsWith(' ') ? ' ' : ''}@${agent.name} `)}>@{agent.name}</button>)}</div><div><textarea value={collaborationMessage} onChange={event => setCollaborationMessage(event.target.value)} placeholder="Write an internal message. Use @ to tag a teammate."/><button className="support-primary" type="button" disabled={!collaborationMessage.trim()} onClick={() => postCollaborationMessage(collaborationTicket)}>Send</button></div></footer></main><aside className="support-collaboration-team"><header><strong>Team online</strong><span>{activeAgents.length}</span></header>{activeAgents.map(agent => <article key={agent.id}><i/><div><strong>{agent.name}</strong><small>{agent.role}</small></div><em>{openTickets.filter(ticket => ticket.assignee === agent.name).length} open</em></article>)}<section><strong>Ticket summary</strong><dl><div><dt>Owner</dt><dd>{collaborationTicket.assignee || 'Unclaimed'}</dd></div><div><dt>Status</dt><dd>{collaborationTicket.status}</dd></div><div><dt>Priority</dt><dd>{collaborationTicket.priority}</dd></div></dl></section></aside></div>}</section></div>
