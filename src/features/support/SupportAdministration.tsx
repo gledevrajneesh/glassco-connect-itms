@@ -576,9 +576,6 @@ export default function SupportAdministration({
             ["operations", "Operational controls"],
             ["routing", "Approval routes"],
             ["codes", "Reasons & codes"],
-            ["data", "Import & backup"],
-            ["quality", "Data quality"],
-            ["audit", "Edit history"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -590,6 +587,7 @@ export default function SupportAdministration({
           </button>
         ))}
       </div>
+      <div className="admin-utility-tabs" aria-label="Administration utilities"><span>Utilities</span>{([['data','Import & backup'],['quality','Data quality'],['audit','Edit history']] as const).map(([id,label]) => <button className={tab === id ? 'active' : ''} type="button" key={id} onClick={() => setTab(id)}>{label}</button>)}</div>
       {tab === "categories" && (
         <MasterTable
           title="Ticket categories & subcategories"
