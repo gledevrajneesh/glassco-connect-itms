@@ -305,6 +305,7 @@ export default function SupportAdministration({
   const [email, setEmail] = useState("");
   const [lead, setLead] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [selectedAgentId, setSelectedAgentId] = useState("");
   const [showTeamCreate, setShowTeamCreate] = useState(false);
   const [approval, setApproval] =
     useState<CatalogueItem["approval"]>("Department + IT");
@@ -672,56 +673,15 @@ export default function SupportAdministration({
       })()}
       {tab === "operations" && (
         <section className="admin-operations">
-          <section className="support-panel admin-master">
-            <header>
-              <div>
-                <h2>Agent roster</h2>
-                <small>
-                  Only active agents can be selected by the automated routing
-                  rules.
-                </small>
-              </div>
-            </header>
-            <div className="admin-table">
-              <div
-                className="head"
-                style={{ gridTemplateColumns: "1.2fr 1.4fr 1fr .7fr" }}
-              >
-                <span>Agent</span>
-                <span>Business email</span>
-                <span>Operational role</span>
-                <span>State</span>
-              </div>
-              {operations.agents.map((agent) => (
-                <div
-                  key={agent.id}
-                  style={{ gridTemplateColumns: "1.2fr 1.4fr 1fr .7fr" }}
-                >
-                  <strong>{agent.name}</strong>
-                  <span>{agent.email}</span>
-                  <span>{agent.role}</span>
-                  <button
-                    onClick={() => {
-                      setOperations((current) => ({
-                        ...current,
-                        agents: current.agents.map((row) =>
-                          row.id === agent.id
-                            ? { ...row, active: !row.active }
-                            : row,
-                        ),
-                      }));
-                      audit(
-                        "Agent roster",
-                        `${agent.active ? "Deactivated" : "Activated"} ${agent.name}`,
-                      );
-                    }}
-                  >
-                    {agent.active ? "Active" : "Inactive"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
+          {(() => {
+            const selectedAgent = operations.agents.find((agent) => agent.id === selectedAgentId) || operations.agents[0];
+            const ownedCategories = selectedAgent ? operations.routes.filter((route) => route.primary === selectedAgent.name || route.fallback === selectedAgent.name).map((route) => route.category) : [];
+            const assignmentTeams = selectedAgent ? teams.filter((team) => team.lead === selectedAgent.name || team.members.includes(selectedAgent.name)).map((team) => team.name) : [];
+            return <section className="admin-agent-directory">
+              <header><div><span>OPERATIONS DIRECTORY</span><h2>Agent roster</h2><p>Select an agent to review their operational role, routing coverage and team association.</p></div></header>
+              <div className="admin-agent-layout"><nav aria-label="Support agents">{operations.agents.map((agent) => <button className={agent.id === selectedAgent?.id ? "selected" : ""} type="button" key={agent.id} onClick={() => setSelectedAgentId(agent.id)}><span><strong>{agent.name}</strong><small>{agent.email}</small></span><em className={agent.active ? "active" : "inactive"}>{agent.active ? "Active" : "Inactive"}</em><b>{agent.role}</b></button>)}</nav>{selectedAgent && <article className="admin-agent-detail"><header><div><span>AGENT PROFILE</span><h3>{selectedAgent.name}</h3><p>{selectedAgent.active ? "Available for controlled assignment and automated routing." : "This agent is inactive and will not receive new assignments."}</p></div><button type="button" onClick={() => { setOperations((current) => ({ ...current, agents: current.agents.map((row) => row.id === selectedAgent.id ? { ...row, active: !row.active } : row) })); audit("Agent roster", `${selectedAgent.active ? "Deactivated" : "Activated"} ${selectedAgent.name}`); }}>{selectedAgent.active ? "Deactivate agent" : "Activate agent"}</button></header><dl><div><dt>Business email</dt><dd>{selectedAgent.email}</dd></div><div><dt>Operational role</dt><dd>{selectedAgent.role}</dd></div><div><dt>Routing coverage</dt><dd>{ownedCategories.length ? ownedCategories.join(" · ") : "No category routing"}</dd></div><div><dt>Team association</dt><dd>{assignmentTeams.length ? assignmentTeams.join(" · ") : "No team association"}</dd></div></dl><p className="admin-team-guidance">Category ownership is maintained below in <b>Category-to-agent routing</b>. Keep routing current whenever an agent's role changes.</p></article>}</div>
+            </section>;
+          })()}
           <section className="support-panel admin-master">
             <header>
               <div>
