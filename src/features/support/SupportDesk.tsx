@@ -162,6 +162,7 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
   const [collaborationOpen, setCollaborationOpen] = useState(false)
   const [collaborationTicketId, setCollaborationTicketId] = useState('')
   const [collaborationMessage, setCollaborationMessage] = useState('')
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const [ticketComposer, setTicketComposer] = useState<'reply' | 'internal' | null>(null)
   const [replyText, setReplyText] = useState('')
   const [internalNote, setInternalNote] = useState('')
@@ -179,6 +180,16 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
   const [reopenReason,setReopenReason]=useState('');const [reopenTicketId,setReopenTicketId]=useState('');const [ticketConfirmation,setTicketConfirmation]=useState<{code:string;assignee:string;resolutionDueAt:string} | null>(null)
   const [notice, setNotice] = useState<{ tone: 'success' | 'warning' | 'error'; message: string } | null>(null)
   useEffect(() => { if (collaborationOpen) setCollaborationTicketId('__general') }, [collaborationOpen])
+  useEffect(() => {
+    const detectMention = (event: Event) => {
+      const target = event.target
+      if (!(target instanceof HTMLTextAreaElement) || !target.placeholder.startsWith('Write an internal message')) return
+      const match = target.value.slice(0, target.selectionStart || target.value.length).match(/@([^\s@]*)$/)
+      setMentionQuery(match ? match[1].toLowerCase() : null)
+    }
+    document.addEventListener('input', detectMention)
+    return () => document.removeEventListener('input', detectMention)
+  }, [])
   const [savingTicket, setSavingTicket] = useState(false)
   const [creatingTicket, setCreatingTicket] = useState(false)
   const [transferringAttachments, setTransferringAttachments] = useState(false)
@@ -521,12 +532,14 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
     const now = new Date().toISOString()
     const body = collaborationMessage.trim()
     if (ticket.id === '__general') {
-      void setTeamMessages(rows => [...rows, { id: crypto.randomUUID(), requesterEmail: 'support-team', channel: 'general', visibility: 'internal', at: now, author: identityName || identityEmail, body }])
+      void setTeamMessages(rows => [...rows, { id: crypto.randomUUID(), requesterEmail: 'support-team', channel: 'general', visibility: 'internal', at: now, author: identityName || identityEmail, body }]).catch((failure: unknown) => setNotice({ tone: 'error', message: failure instanceof Error && /quota/i.test(failure.message) ? 'Team message was not saved: Firebase Firestore daily quota is currently exhausted. Retry after the quota resets or upgrade the project plan.' : 'Team message could not be saved. Please retry.' }))
       setCollaborationMessage('')
+      setMentionQuery(null)
       return
     }
     void setTickets(current => current.map(row => row.id === ticket.id ? { ...row, updatedAt: now, messages: [...(row.messages || []), { id: crypto.randomUUID(), at: now, author: identityName || identityEmail, visibility: 'internal', body }], history: [...row.history, { at: now, event: 'Internal team collaboration message added', actor: identityEmail }] } : row))
     setCollaborationMessage('')
+    setMentionQuery(null)
   }
 
   function reopenTicket(ticket: Ticket) {
@@ -670,6 +683,7 @@ export default function SupportDesk({ identityEmail, identityName, isServiceAgen
           </div>{selectedTicket&&<section className="support-panel support-itms-link"><header><div><strong>Linked ITMS lifecycle</strong><small>{selectedTicket.assetId?assetLabel(assets.find(asset=>asset.id===selectedTicket.assetId) as Asset):'No asset linked to this ticket'}</small></div>{selectedTicket.assetId&&<button type="button" onClick={()=>onOpenItms('Maintenance & Inspection',selectedTicket.assetId)}>Open ITMS maintenance</button>}</header>{selectedTicket.assetId&&<div className="support-itms-actions"><button type="button" onClick={()=>setIntegrationMode(integrationMode==='Repair'?'':'Repair')}>Start repair</button><button type="button" onClick={()=>setIntegrationMode(integrationMode==='Incident'?'':'Incident')}>Log loss / damage</button></div>}{integrationMode==='Repair'&&<div className="support-integration-form"><label>Repair mode<select value={repairMode} onChange={event=>setRepairMode(event.target.value as typeof repairMode)}><option>Internal</option><option>External vendor</option></select></label>{repairMode==='External vendor'&&<><label>Vendor<select value={repairVendorId} onChange={event=>setRepairVendorId(event.target.value)}><option value="">Select vendor</option>{vendors.filter(vendor=>vendor.status!=='Inactive').map(vendor=><option value={vendor.id} key={vendor.id}>{vendor.code} · {vendor.name}</option>)}</select></label><label>Expected return<input type="date" value={expectedReturnDate} onChange={event=>setExpectedReturnDate(event.target.value)}/></label><label>Carrier / person<input value={carrier} onChange={event=>setCarrier(event.target.value)}/></label></>}<label className="full">Diagnosis / fault<textarea value={integrationNotes} onChange={event=>setIntegrationNotes(event.target.value)}/></label><button className="support-primary" type="button" onClick={()=>startRepair(selectedTicket)}>Create ITMS repair{repairMode==='External vendor'?' & gate pass':''}</button></div>}{integrationMode==='Incident'&&<div className="support-integration-form"><label>Incident type<select value={incidentType} onChange={event=>setIncidentType(event.target.value)}><option>Breakage</option><option>Damaged</option><option>Lost</option><option>Stolen</option><option>Escalation</option></select></label><label className="full">Incident details<textarea value={integrationNotes} onChange={event=>setIntegrationNotes(event.target.value)}/></label><button className="support-primary" type="button" onClick={()=>logAssetIncident(selectedTicket)}>Create ITMS incident</button></div>}<div className="support-itms-links">{(selectedTicket.itmsLinks||[]).map(link=><button type="button" key={link.recordId} onClick={()=>onOpenItms(link.kind==='Repair'?'Maintenance & Inspection':'Shared Masters',link.recordId)}><strong>{link.kind}</strong><span>{link.reference}</span><Icon name="arrow" size={16}/></button>)}</div></section>}</section>}
       </main>
       {previewAttachment && <div className="support-preview-backdrop" role="dialog" aria-modal="true" aria-label={`Preview ${previewAttachment.name}`} onClick={() => setPreviewAttachment(null)}><section className="support-preview" onClick={event => event.stopPropagation()}><header><div><strong>{previewAttachment.name}</strong><small>Secure Drive preview · access is controlled by Google Workspace</small></div><button type="button" onClick={() => setPreviewAttachment(null)}>×</button></header>{previewAttachment.contentType.startsWith('image/') ? <img src={previewAttachment.driveUrl || `https://drive.google.com/uc?export=view&id=${encodeURIComponent(previewAttachment.driveFileId || '')}`} alt={previewAttachment.name}/> : <iframe title={previewAttachment.name} src={previewAttachment.driveUrl || `https://drive.google.com/file/d/${encodeURIComponent(previewAttachment.driveFileId || '')}/preview`}/>}<footer><button type="button" onClick={() => viewAttachment(previewAttachment)}>Open in Google Drive</button></footer></section></div>}
+      {collaborationOpen && mentionQuery !== null && <div className="support-mention-picker" role="listbox" aria-label="Mention a teammate">{supportOperations.agents.filter(agent => agent.active && agent.name !== (identityName || identityEmail) && agent.name.toLowerCase().includes(mentionQuery)).map(agent => <button type="button" role="option" key={agent.id} onMouseDown={event => event.preventDefault()} onClick={() => { setCollaborationMessage(message => message.replace(/@([^\s@]*)$/, `@${agent.name} `)); setMentionQuery(null) }}><i/><span><strong>{agent.name}</strong><small>{agent.role}</small></span></button>)}{!supportOperations.agents.some(agent => agent.active && agent.name !== (identityName || identityEmail) && agent.name.toLowerCase().includes(mentionQuery)) && <span className="support-mention-empty">No active teammate found</span>}</div>}
       {collaborationOpen && (() => {
         const openTickets = tickets.filter(ticket => !['Resolved', 'Closed'].includes(ticket.status))
         const generalChannel: Ticket = { id: '__general', code: 'GENERAL', kind: 'Incident', category: 'Team channel', subcategory: 'General', title: 'General team channel', description: 'Default private collaboration channel for the support team.', priority: 'Low', impact: 'Individual', urgency: 'Normal', status: 'Open', requesterEmail: 'support-team', requesterName: 'Support team', assignee: 'Team channel', firstResponseDueAt: '', resolutionDueAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), messages: teamMessages, attachments: [], createdAt: '', updatedAt: '', history: [] }
