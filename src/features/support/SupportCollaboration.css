@@ -1,0 +1,51 @@
+/* Collaboration overrides are isolated because the legacy SupportDesk sheet is
+   intentionally dense. The compact drawer always starts with the ticket queue
+   visible on the left, preserving a dependable case-to-chat workflow. */
+.support-collab-v2.compact .support-collab-v2-body {
+  grid-template-columns: 145px minmax(0, 1fr) !important;
+}
+
+.support-collab-v2.compact .support-collab-queue {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  order: 0;
+  width: 145px !important;
+  border-left: 0;
+  border-right: 1px solid #e2edf2;
+}
+
+.support-collab-v2.compact .support-collab-conversation {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  order: 1;
+}
+
+.support-collab-v2.compact .support-collab-queue.open {
+  width: 145px !important;
+  box-shadow: none;
+}
+
+.support-collab-v2.compact .support-collab-queue.open header {
+  height: 38px !important;
+  padding: 0 8px !important;
+}
+
+.support-collab-v2.compact .support-collab-queue.open header strong {
+  font-size: 11px !important;
+}
+
+.support-collab-v2.compact .support-collab-queue.open > button {
+  width: calc(100% - 12px) !important;
+  margin: 0 6px 5px !important;
+  padding: 7px !important;
+}
+
+@media (max-width: 600px) {
+  .support-collab-v2.compact .support-collab-v2-body {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .support-collab-v2.compact .support-collab-queue {
+    display: none;
+  }
+}

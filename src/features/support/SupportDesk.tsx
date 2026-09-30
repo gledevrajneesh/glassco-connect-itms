@@ -15,6 +15,7 @@ import { beginSupportAttachmentUpload, normalizeSupportAttachment, openSupportAt
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { firestore } from '../../lib/firebase'
 import './SupportDesk.css'
+import './SupportCollaboration.css'
 import '../../sidebarStandard.css'
 
 type TicketKind = 'Incident' | 'Service request' | 'Access request'
@@ -151,7 +152,9 @@ type CollaborationProps = {
 
 function SupportCollaboration({ tickets, teamMessages, agents, identityName, identityEmail, initialTicketId, onClose, onSelectTicket, onClaim, onPost, onAttach }: CollaborationProps) {
   const [mode, setMode] = useState<'compact' | 'expanded'>('compact')
-  const [queueOpen, setQueueOpen] = useState(false)
+  // Keep the ticket queue visible by default: it is the primary way an agent
+  // moves between cases while collaborating.
+  const [queueOpen, setQueueOpen] = useState(true)
   const [channel, setChannel] = useState<'general' | 'ticket' | 'handover' | 'alerts'>('general')
   const [ticketId, setTicketId] = useState(initialTicketId)
   const [message, setMessage] = useState('')
